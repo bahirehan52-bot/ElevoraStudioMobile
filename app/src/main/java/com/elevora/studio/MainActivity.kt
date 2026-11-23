@@ -82,16 +82,16 @@ private fun EditorScreen(){
  }
  val addAudio=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->if(u!=null){runCatching{context.contentResolver.takePersistableUriPermission(u,1)};audioUri=u;audioName=u.lastPathSegment?.substringAfterLast('/')?:"Music";status="Background music added."}}
  val save=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){u->if(u!=null)runCatching{
-  val root=JSONObject().put("name",projectName).put("audio",audioUri?.toString()?:"")
+  val root=JSONObject().put("name",projectName).put("audio",audioUri?.toString()?:"").put("overlayText",overlayText)
   val arr=JSONArray();clips.forEach{c->arr.put(JSONObject().put("uri",c.uri).put("name",c.name).put("duration",c.duration).put("start",c.start).put("end",c.end).put("speed",c.speed.toDouble()).put("rotation",c.rotation).put("look",c.look).put("brightness",c.brightness.toDouble()).put("contrast",c.contrast.toDouble()))}
   root.put("clips",arr);context.contentResolver.openOutputStream(u)!!.use{it.write(root.toString(2).toByteArray())};status="Project saved."
  }.onFailure{status="Save failed: ${it.message}"}}
  val load=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->if(u!=null)runCatching{
-  val root=context.contentResolver.openInputStream(u)!!.bufferedReader().use{JSONObject(it.readText())};projectName=root.optString("name","My Video");clips.clear()
+  val root=context.contentResolver.openInputStream(u)!!.bufferedReader().use{JSONObject(it.readText())};projectName=root.optString("name","My Video");overlayText=root.optString("overlayText","");clips.clear()
   val a=root.getJSONArray("clips");for(i in 0 until a.length()){val o=a.getJSONObject(i);clips.add(EditClip(o.getString("uri"),o.optString("name","Clip"),o.getLong("duration"),o.optLong("start"),o.optLong("end"),o.optDouble("speed",1.0).toFloat(),o.optInt("rotation"),o.optString("look","Original"),o.optDouble("brightness",0.0).toFloat(),o.optDouble("contrast",0.0).toFloat()))}
   val au=root.optString("audio","");audioUri=if(au.isBlank())null else Uri.parse(au);audioName=if(audioUri==null)"No background music" else "Background music";selected=0.coerceAtMost(clips.lastIndex);status="Project loaded."
  }.onFailure{status="Open failed: ${it.message}"}}
- LaunchedEffect(selected,clips.size){val c=clips.getOrNull(selected);if(c!=null){player.setMediaItem(MediaItem.fromUri(Uri.parse(c.uri)));player.prepare()}else player.stop()}
+ LaunchedEffect(selected,clips.size,clipKey(clips,selected)){val c=clips.getOrNull(selected);if(c!=null){val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}
  val clip=clips.getOrNull(selected)
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
@@ -117,19 +117,19 @@ private fun EditorScreen(){
       Column(Modifier.weight(1f)){Text(c.name,color=Color.White,maxLines=1,fontSize=12.sp);Text("${tc(c.start)}–${tc(c.end)} • ${c.speed}x",color=muted,fontSize=10.sp)}
       IconButton(onClick={if(index>0){val t=clips[index];clips[index]=clips[index-1];clips[index-1]=t;selected=index-1}}){Icon(Icons.Default.KeyboardArrowUp,"Move up",tint=mint)}
       IconButton(onClick={if(index<clips.lastIndex){val t=clips[index];clips[index]=clips[index+1];clips[index+1]=t;selected=index+1}}){Icon(Icons.Default.KeyboardArrowDown,"Move down",tint=mint)}
-      IconButton(onClick={clips.removeAt(index);selected=selected.coerceAtMost(clips.lastIndex)}){Icon(Icons.Default.Delete,"Delete",tint=Color.Red)}
+      IconButton(onClick={removeClip(index)}){Icon(Icons.Default.Delete,"Delete",tint=Color.Red)}
      }
     }
    }
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
     OutlinedButton(enabled=clip!=null,onClick={val c=clip!!;val mid=c.start+(c.end-c.start)/2;if(mid>c.start&&mid<c.end){clips[selected]=c.copy(end=mid);clips.add(selected+1,c.copy(start=mid));status="Clip split."}},modifier=Modifier.weight(1f)){Icon(Icons.Default.ContentCut,null);Text(" Split")}
-    OutlinedButton(enabled=clip!=null,onClick={clips.removeAt(selected);selected=selected.coerceAtMost(clips.lastIndex)},modifier=Modifier.weight(1f)){Icon(Icons.Default.Delete,null);Text(" Delete")}
+    OutlinedButton(enabled=clip!=null,onClick={removeClip(selected)},modifier=Modifier.weight(1f)){Icon(Icons.Default.Delete,null);Text(" Delete")}
    }
    Spacer(Modifier.height(14.dp));Text("CLIP CONTROLS",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp)
    if(clip!=null){
     Text("Trim: ${tc(clip.start)} to ${tc(clip.end)}",color=muted,fontSize=11.sp)
     RangeSlider(value=clip.start.toFloat()..clip.end.toFloat(),onValueChange={r->val s=r.start.toLong().coerceIn(0,clip.duration-1);val e=r.endInclusive.toLong().coerceIn(s+1,clip.duration);update(clip.copy(start=s,end=e))},valueRange=0f..clip.duration.toFloat().coerceAtLeast(1f))
-    Text("Speed ${String.format(Locale.US,"%.2f",clip.speed)}x",color=Color.White);Slider(value=clip.speed,onValueChange={update(clip.copy(speed=it))},valueRange=.25f..3f)
+    Text("Speed ${String.format(Locale.US,"%.2f",clip.speed)}x",color=Color.White);Slider(value=clip.speed,onValueChange={update(clip.copy(speed=it));player.setPlaybackSpeed(it)},valueRange=.25f..3f)
     Text("Brightness ${String.format(Locale.US,"%.2f",clip.brightness)}",color=Color.White);Slider(value=clip.brightness,onValueChange={update(clip.copy(brightness=it))},valueRange=-1f..1f)
     Text("Contrast ${String.format(Locale.US,"%.2f",clip.contrast)}",color=Color.White);Slider(value=clip.contrast,onValueChange={update(clip.copy(contrast=it))},valueRange=-1f..1f)
     Row(verticalAlignment=Alignment.CenterVertically){Text("Rotation ${clip.rotation}°",color=Color.White,modifier=Modifier.weight(1f));IconButton(onClick={update(clip.copy(rotation=(clip.rotation+270)%360))}){Icon(Icons.Default.RotateLeft,null,tint=mint)};IconButton(onClick={update(clip.copy(rotation=(clip.rotation+90)%360))}){Icon(Icons.Default.RotateRight,null,tint=mint)}}
@@ -172,4 +172,5 @@ private fun EditorScreen(){
   }
  }
 }
+private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.let{"${it.uri}:${it.start}:${it.end}"}?:"empty"
 private fun tc(ms:Long):String{val s=(ms/1000).coerceAtLeast(0);return String.format(Locale.US,"%02d:%02d",s/60,s%60)}
