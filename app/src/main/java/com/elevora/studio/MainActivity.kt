@@ -70,6 +70,7 @@ private fun EditorScreen(){
  var audioUri by remember{ mutableStateOf<Uri?>(null) }
  var audioName by remember{ mutableStateOf("No background music") }
  var status by remember{ mutableStateOf("Import videos to start editing.") }
+ var overlayText by remember{ mutableStateOf("") }
  var exporting by remember{ mutableStateOf(false) }
  var lookMenu by remember{ mutableStateOf(false) }
  val player= remember{ExoPlayer.Builder(context).build()}
