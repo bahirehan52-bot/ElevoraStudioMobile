@@ -36,6 +36,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.transformer.*
 import androidx.media3.effect.RgbAdjustment
+import androidx.media3.effect.Brightness
+import androidx.media3.effect.Contrast
 import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.TextOverlay
@@ -51,7 +53,7 @@ private val panel = Color(0xFF172331)
 private val mint = Color(0xFF54E0C0)
 private val muted = Color(0xFF9AA9B9)
 
-data class EditClip(val uri:String,val name:String,val duration:Long,val start:Long=0,val end:Long=duration,val speed:Float=1f,val rotation:Int=0,val look:String="Original")
+data class EditClip(val uri:String,val name:String,val duration:Long,val start:Long=0,val end:Long=duration,val speed:Float=1f,val rotation:Int=0,val look:String="Original",val brightness:Float=0f,val contrast:Float=0f)
 
 class MainActivity:ComponentActivity(){
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{EditorScreen()}}
@@ -79,12 +81,12 @@ private fun EditorScreen(){
  val addAudio=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->if(u!=null){runCatching{context.contentResolver.takePersistableUriPermission(u,1)};audioUri=u;audioName=u.lastPathSegment?.substringAfterLast('/')?:"Music";status="Background music added."}}
  val save=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){u->if(u!=null)runCatching{
   val root=JSONObject().put("name",projectName).put("audio",audioUri?.toString()?:"")
-  val arr=JSONArray();clips.forEach{c->arr.put(JSONObject().put("uri",c.uri).put("name",c.name).put("duration",c.duration).put("start",c.start).put("end",c.end).put("speed",c.speed.toDouble()).put("rotation",c.rotation).put("look",c.look))}
+  val arr=JSONArray();clips.forEach{c->arr.put(JSONObject().put("uri",c.uri).put("name",c.name).put("duration",c.duration).put("start",c.start).put("end",c.end).put("speed",c.speed.toDouble()).put("rotation",c.rotation).put("look",c.look).put("brightness",c.brightness.toDouble()).put("contrast",c.contrast.toDouble()))}
   root.put("clips",arr);context.contentResolver.openOutputStream(u)!!.use{it.write(root.toString(2).toByteArray())};status="Project saved."
  }.onFailure{status="Save failed: ${it.message}"}}
  val load=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->if(u!=null)runCatching{
   val root=context.contentResolver.openInputStream(u)!!.bufferedReader().use{JSONObject(it.readText())};projectName=root.optString("name","My Video");clips.clear()
-  val a=root.getJSONArray("clips");for(i in 0 until a.length()){val o=a.getJSONObject(i);clips.add(EditClip(o.getString("uri"),o.optString("name","Clip"),o.getLong("duration"),o.optLong("start"),o.optLong("end"),o.optDouble("speed",1.0).toFloat(),o.optInt("rotation"),o.optString("look","Original")))}
+  val a=root.getJSONArray("clips");for(i in 0 until a.length()){val o=a.getJSONObject(i);clips.add(EditClip(o.getString("uri"),o.optString("name","Clip"),o.getLong("duration"),o.optLong("start"),o.optLong("end"),o.optDouble("speed",1.0).toFloat(),o.optInt("rotation"),o.optString("look","Original"),o.optDouble("brightness",0.0).toFloat(),o.optDouble("contrast",0.0).toFloat()))}
   val au=root.optString("audio","");audioUri=if(au.isBlank())null else Uri.parse(au);audioName=if(audioUri==null)"No background music" else "Background music";selected=0.coerceAtMost(clips.lastIndex);status="Project loaded."
  }.onFailure{status="Open failed: ${it.message}"}}
  LaunchedEffect(selected,clips.size){val c=clips.getOrNull(selected);if(c!=null){player.setMediaItem(MediaItem.fromUri(Uri.parse(c.uri)));player.prepare()}else player.stop()}
@@ -126,6 +128,8 @@ private fun EditorScreen(){
     Text("Trim: ${tc(clip.start)} to ${tc(clip.end)}",color=muted,fontSize=11.sp)
     RangeSlider(value=clip.start.toFloat()..clip.end.toFloat(),onValueChange={r->val s=r.start.toLong().coerceIn(0,clip.duration-1);val e=r.endInclusive.toLong().coerceIn(s+1,clip.duration);update(clip.copy(start=s,end=e))},valueRange=0f..clip.duration.toFloat().coerceAtLeast(1f))
     Text("Speed ${String.format(Locale.US,"%.2f",clip.speed)}x",color=Color.White);Slider(value=clip.speed,onValueChange={update(clip.copy(speed=it))},valueRange=.25f..3f)
+    Text("Brightness ${String.format(Locale.US,"%.2f",clip.brightness)}",color=Color.White);Slider(value=clip.brightness,onValueChange={update(clip.copy(brightness=it))},valueRange=-1f..1f)
+    Text("Contrast ${String.format(Locale.US,"%.2f",clip.contrast)}",color=Color.White);Slider(value=clip.contrast,onValueChange={update(clip.copy(contrast=it))},valueRange=-1f..1f)
     Row(verticalAlignment=Alignment.CenterVertically){Text("Rotation ${clip.rotation}°",color=Color.White,modifier=Modifier.weight(1f));IconButton(onClick={update(clip.copy(rotation=(clip.rotation+270)%360))}){Icon(Icons.Default.RotateLeft,null,tint=mint)};IconButton(onClick={update(clip.copy(rotation=(clip.rotation+90)%360))}){Icon(Icons.Default.RotateRight,null,tint=mint)}}
     Row(verticalAlignment=Alignment.CenterVertically){Text("Look: ${clip.look}",color=Color.White,modifier=Modifier.weight(1f));Box{OutlinedButton(onClick={lookMenu=true}){Text("Choose")};DropdownMenu(expanded=lookMenu,onDismissRequest={lookMenu=false}){listOf("Original","Warm","Cool","Vintage","Mono").forEach{v->DropdownMenuItem(text={Text(v)},onClick={update(clip.copy(look=v));lookMenu=false})}}}}
    }else Text("Select a clip to edit.",color=muted)
@@ -142,6 +146,8 @@ private fun EditorScreen(){
      val effects=mutableListOf<Effect>();effects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(c.rotation.toFloat()).build())
      val rgb=when(c.look){"Warm"->Triple(1.12f,1.02f,.88f);"Cool"->Triple(.88f,1.02f,1.12f);"Vintage"->Triple(1.08f,.94f,.82f);"Mono"->Triple(.65f,.65f,.65f);else->Triple(1f,1f,1f)}
      if(c.look!="Original")effects.add(RgbAdjustment.Builder().setRedScale(rgb.first).setGreenScale(rgb.second).setBlueScale(rgb.third).build())
+     if(c.brightness!=0f)effects.add(Brightness(c.brightness))
+     if(c.contrast!=0f)effects.add(Contrast(c.contrast))
      if(overlayText.isNotBlank())effects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(SpannableString(overlayText)))))
      val sp=object:SpeedProvider{override fun getSpeed(timeUs:Long)=c.speed;override fun getNextSpeedChangeTimeUs(timeUs:Long)=androidx.media3.common.C.TIME_UNSET}
      EditedMediaItem.Builder(media).setSpeed(sp).setEffects(Effects(emptyList(),effects)).build()
