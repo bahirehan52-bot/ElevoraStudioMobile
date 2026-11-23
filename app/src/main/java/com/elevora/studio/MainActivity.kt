@@ -35,6 +35,7 @@ import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.transformer.*
+import androidx.media3.transformer.Composition as MediaComposition
 import androidx.media3.effect.RgbAdjustment
 import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
@@ -153,14 +154,14 @@ private fun EditorScreen(){
      EditedMediaItem.Builder(media).setSpeed(sp).setEffects(Effects(emptyList(),effects)).build()
     }
     val videoSeq=EditedMediaItemSequence.withAudioAndVideoFrom(items)
-    val composition=if(audioUri!=null){val music=EditedMediaItem.Builder(MediaItem.fromUri(audioUri!!)).setRemoveVideo(true).build();val audioSeq=EditedMediaItemSequence.withAudioFrom(listOf(music)).buildUpon().setIsLooping(true).build();Composition.Builder(videoSeq,audioSeq).build()}else Composition.Builder(videoSeq).build()
+    val composition=if(audioUri!=null){val music=EditedMediaItem.Builder(MediaItem.fromUri(audioUri!!)).setRemoveVideo(true).build();val audioSeq=EditedMediaItemSequence.withAudioFrom(listOf(music)).buildUpon().setIsLooping(true).build();MediaComposition.Builder(listOf(videoSeq,audioSeq)).build()}else MediaComposition.Builder(listOf(videoSeq)).build()
     val listener=object:Transformer.Listener{
-     override fun onCompleted(composition:Composition,exportResult:ExportResult){runCatching{
+     override fun onCompleted(composition:MediaComposition,exportResult:ExportResult){runCatching{
       val values=ContentValues().apply{put(MediaStore.Video.Media.DISPLAY_NAME,"${projectName.replace(Regex("[^A-Za-z0-9_-]"),"_")}_${System.currentTimeMillis()}.mp4");put(MediaStore.Video.Media.MIME_TYPE,"video/mp4");put(MediaStore.Video.Media.RELATIVE_PATH,"${Environment.DIRECTORY_MOVIES}/Elevora Studio")}
       val dest=context.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values)!!;context.contentResolver.openOutputStream(dest)!!.use{o->FileInputStream(out).use{it.copyTo(o)}};out.delete();status="Export complete • Movies/Elevora Studio"
      }.onFailure{status="Gallery save failed: ${it.message}"};exporting=false
      }
-     override fun onError(composition:Composition,exportResult:ExportResult,exportException:ExportException){status="Export error: ${exportException.message}";out.delete();exporting=false}
+     override fun onError(composition:MediaComposition,exportResult:ExportResult,exportException:ExportException){status="Export error: ${exportException.message}";out.delete();exporting=false}
     }
     runCatching{Transformer.Builder(context).addListener(listener).build().start(composition,out.absolutePath)}.onFailure{status="Export could not start: ${it.message}";out.delete();exporting=false}
    },modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(12.dp)){Icon(Icons.Default.Movie,null);Text(if(exporting)" EXPORTING…" else " EXPORT MP4")}
