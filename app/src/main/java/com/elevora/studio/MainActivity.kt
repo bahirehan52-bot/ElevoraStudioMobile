@@ -37,6 +37,9 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.transformer.*
 import androidx.media3.effect.RgbAdjustment
 import androidx.media3.effect.ScaleAndRotateTransformation
+import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.TextOverlay
+import android.text.SpannableString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -126,7 +129,9 @@ private fun EditorScreen(){
     Row(verticalAlignment=Alignment.CenterVertically){Text("Rotation ${clip.rotation}°",color=Color.White,modifier=Modifier.weight(1f));IconButton(onClick={update(clip.copy(rotation=(clip.rotation+270)%360))}){Icon(Icons.Default.RotateLeft,null,tint=mint)};IconButton(onClick={update(clip.copy(rotation=(clip.rotation+90)%360))}){Icon(Icons.Default.RotateRight,null,tint=mint)}}
     Row(verticalAlignment=Alignment.CenterVertically){Text("Look: ${clip.look}",color=Color.White,modifier=Modifier.weight(1f));Box{OutlinedButton(onClick={lookMenu=true}){Text("Choose")};DropdownMenu(expanded=lookMenu,onDismissRequest={lookMenu=false}){listOf("Original","Warm","Cool","Vintage","Mono").forEach{v->DropdownMenuItem(text={Text(v)},onClick={update(clip.copy(look=v));lookMenu=false})}}}}
    }else Text("Select a clip to edit.",color=muted)
-   Spacer(Modifier.height(14.dp));Text("AUDIO TRACK • A1",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp);Text(audioName,color=muted,fontSize=11.sp)
+   Spacer(Modifier.height(14.dp));Text("TEXT OVERLAY",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp)
+   OutlinedTextField(overlayText,{overlayText=it},label={Text("Text to show on video")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+   Spacer(Modifier.height(10.dp));Text("AUDIO TRACK • A1",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp);Text(audioName,color=muted,fontSize=11.sp)
    OutlinedButton(onClick={addAudio.launch(arrayOf("audio/*"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.MusicNote,null);Text(" Add background music")}
    Spacer(Modifier.height(14.dp))
    Button(enabled=clips.isNotEmpty()&&!exporting,onClick={
@@ -137,6 +142,7 @@ private fun EditorScreen(){
      val effects=mutableListOf<Effect>();effects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(c.rotation.toFloat()).build())
      val rgb=when(c.look){"Warm"->Triple(1.12f,1.02f,.88f);"Cool"->Triple(.88f,1.02f,1.12f);"Vintage"->Triple(1.08f,.94f,.82f);"Mono"->Triple(.65f,.65f,.65f);else->Triple(1f,1f,1f)}
      if(c.look!="Original")effects.add(RgbAdjustment.Builder().setRedScale(rgb.first).setGreenScale(rgb.second).setBlueScale(rgb.third).build())
+     if(overlayText.isNotBlank())effects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(SpannableString(overlayText)))))
      val sp=object:SpeedProvider{override fun getSpeed(timeUs:Long)=c.speed;override fun getNextSpeedChangeTimeUs(timeUs:Long)=androidx.media3.common.C.TIME_UNSET}
      EditedMediaItem.Builder(media).setSpeed(sp).setEffects(Effects(emptyList(),effects)).build()
     }
