@@ -94,6 +94,7 @@ private fun EditorScreen(){
  LaunchedEffect(selected,clips.size,clipKey(clips,selected)){val c=clips.getOrNull(selected);if(c!=null){val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}
  val clip=clips.getOrNull(selected)
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
+ fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
   Column(Modifier.fillMaxSize().background(bg).verticalScroll(rememberScrollState()).padding(14.dp)){
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
@@ -172,5 +173,5 @@ private fun EditorScreen(){
   }
  }
 }
-private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.let{"${it.uri}:${it.start}:${it.end}"}?:"empty"
+private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.uri?:"empty"
 private fun tc(ms:Long):String{val s=(ms/1000).coerceAtLeast(0);return String.format(Locale.US,"%02d:%02d",s/60,s%60)}
