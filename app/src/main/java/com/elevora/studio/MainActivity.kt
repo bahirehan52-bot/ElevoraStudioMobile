@@ -148,8 +148,8 @@ private fun EditorScreen(){
      }
     }
    }
-   Surface(Modifier.fillMaxWidth().weight(0.58f),color=panel,shape=RoundedCornerShape(topStart=14.dp,topEnd=14.dp)){
-    Column(Modifier.fillMaxSize().padding(horizontal=10.dp,vertical=7.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
+   Surface(Modifier.fillMaxWidth().weight(0.78f),color=panel,shape=RoundedCornerShape(topStart=14.dp,topEnd=14.dp)){
+    Column(Modifier.fillMaxSize().padding(horizontal=10.dp,vertical=5.dp),verticalArrangement=Arrangement.spacedBy(3.dp)){
      when(activeTab){
       "Media"->{
        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
@@ -189,15 +189,12 @@ private fun EditorScreen(){
        }else Text("Select a clip first.",color=muted)
       }
       "Text"->{
-       Text("TEXT OVERLAY",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
-       OutlinedTextField(overlayText,{overlayText=it},label={Text("Type text for video")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-       Text("Horizontal position  ${String.format(Locale.US,"%.2f",textX)}",color=Color.White,fontSize=11.sp)
-       Slider(value=textX,onValueChange={textX=it},valueRange=-1f..1f)
-       Text("Vertical position  ${String.format(Locale.US,"%.2f",textY)}",color=Color.White,fontSize=11.sp)
-       Slider(value=textY,onValueChange={textY=it},valueRange=-1f..1f)
-       Text("Text size  ${String.format(Locale.US,"%.1f",textScale)}x",color=Color.White,fontSize=11.sp)
-       Slider(value=textScale,onValueChange={textScale=it},valueRange=.3f..2.5f)
-       Button(onClick={val current=clips.getOrNull(selected);if(current!=null){val wasPlaying=player.playWhenReady;val position=player.currentPosition;appliedOverlayText=overlayText;appliedTextX=textX;appliedTextY=textY;appliedTextScale=textScale;player.setVideoEffects(clipEffects(current,overlayText,textX,textY,textScale));player.seekTo(position);if(wasPlaying)player.play();status="Text applied to preview."}},modifier=Modifier.fillMaxWidth()){Text("Apply text to preview")}
+       Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("TEXT OVERLAY",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.weight(1f));Text("Position and size",color=muted,fontSize=9.sp)}
+       OutlinedTextField(overlayText,{overlayText=it},placeholder={Text("Type title or caption")},modifier=Modifier.fillMaxWidth().heightIn(max=54.dp),singleLine=true)
+       Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("X  ${String.format(Locale.US,"%.1f",textX)}",color=Color.White,fontSize=10.sp,modifier=Modifier.width(48.dp));Slider(value=textX,onValueChange={textX=it},valueRange=-1f..1f,modifier=Modifier.weight(1f))}
+       Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("Y  ${String.format(Locale.US,"%.1f",textY)}",color=Color.White,fontSize=10.sp,modifier=Modifier.width(48.dp));Slider(value=textY,onValueChange={textY=it},valueRange=-1f..1f,modifier=Modifier.weight(1f))}
+       Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("SIZE  ${String.format(Locale.US,"%.1f",textScale)}x",color=Color.White,fontSize=10.sp,modifier=Modifier.width(48.dp));Slider(value=textScale,onValueChange={textScale=it},valueRange=.3f..2.5f,modifier=Modifier.weight(1f))}
+       Button(onClick={val current=clips.getOrNull(selected);if(current!=null){val wasPlaying=player.playWhenReady;val position=player.currentPosition;appliedOverlayText=overlayText;appliedTextX=textX;appliedTextY=textY;appliedTextScale=textScale;player.setVideoEffects(clipEffects(current,overlayText,textX,textY,textScale));player.seekTo(position);if(wasPlaying)player.play();status="Text applied to preview."}},modifier=Modifier.fillMaxWidth().heightIn(min=38.dp),contentPadding=PaddingValues(vertical=5.dp)){Text("Apply text to preview")}
       }
       "Audio"->{
        Text("AUDIO TRACK • A1",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
@@ -207,10 +204,8 @@ private fun EditorScreen(){
       }
       "Effects"->{
        if(clip!=null){
-        Text("BRIGHTNESS  ${String.format(Locale.US,"%.2f",clip.brightness)}",color=Color.White,fontSize=11.sp)
-        Slider(value=clip.brightness,onValueChange={update(clip.copy(brightness=it))},valueRange=-1f..1f)
-        Text("CONTRAST  ${String.format(Locale.US,"%.2f",clip.contrast)}",color=Color.White,fontSize=11.sp)
-        Slider(value=clip.contrast,onValueChange={update(clip.copy(contrast=it))},valueRange=-1f..1f)
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("BRIGHTNESS",color=Color.White,fontSize=10.sp,modifier=Modifier.width(82.dp));Slider(value=clip.brightness,onValueChange={update(clip.copy(brightness=it))},valueRange=-1f..1f,modifier=Modifier.weight(1f))}
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("CONTRAST",color=Color.White,fontSize=10.sp,modifier=Modifier.width(82.dp));Slider(value=clip.contrast,onValueChange={update(clip.copy(contrast=it))},valueRange=-1f..1f,modifier=Modifier.weight(1f))}
         Row(verticalAlignment=Alignment.CenterVertically){Text("Look: ${clip.look}",color=Color.White,modifier=Modifier.weight(1f),fontSize=11.sp);Box{OutlinedButton(onClick={lookMenu=true}){Text("Choose")};DropdownMenu(expanded=lookMenu,onDismissRequest={lookMenu=false}){listOf("Original","Warm","Cool","Vintage","Mono").forEach{v->DropdownMenuItem(text={Text(v)},onClick={update(clip.copy(look=v));lookMenu=false})}}}}
        }else Text("Select a clip first.",color=muted)
       }
