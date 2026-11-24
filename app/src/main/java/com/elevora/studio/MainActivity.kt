@@ -105,8 +105,9 @@ private fun EditorScreen(){
   player.addListener(listener)
   onDispose{player.removeListener(listener)}
  }
- LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview,clip?.brightness,clip?.contrast,clip?.look,clip?.rotation,overlayText){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,overlayText));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
+ LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,overlayText));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
  val clip=clips.getOrNull(selected)
+ LaunchedEffect(clip?.brightness,clip?.contrast,clip?.look,clip?.rotation,overlayText,timelinePreview,selected){val current=clips.getOrNull(selected);if(current!=null)player.setVideoEffects(clipEffects(current,overlayText))}
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
