@@ -111,16 +111,33 @@ private fun EditorScreen(){
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
-  Column(Modifier.fillMaxSize().background(bg).verticalScroll(rememberScrollState()).padding(14.dp)){
+  var toolsExpanded by remember{mutableStateOf(true)}
+  Column(Modifier.fillMaxSize().background(bg).padding(horizontal=10.dp, vertical=6.dp)){
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
     Column{Text("ELEVORA",color=mint,fontSize=24.sp,fontWeight=FontWeight.Black,letterSpacing=2.sp);Text("STUDIO • MOBILE VIDEO EDITOR",color=muted,fontSize=9.sp)}
     Row{IconButton(onClick={load.launch(arrayOf("application/json","text/*"))}){Icon(Icons.Default.FolderOpen,"Open project",tint=mint)};IconButton(onClick={save.launch("${projectName.replace(" ","_")}.elevora.json")}){Icon(Icons.Default.Save,"Save project",tint=mint)}}
    }
    OutlinedTextField(projectName,{projectName=it},label={Text("Project name")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-   Spacer(Modifier.height(12.dp));Text("PREVIEW MONITOR",color=muted,fontSize=10.sp,fontWeight=FontWeight.Bold)
-   Box(Modifier.fillMaxWidth().height(215.dp).background(Color.Black,RoundedCornerShape(12.dp)),contentAlignment=Alignment.Center){
+
+   Column(Modifier.fillMaxWidth().weight(1f).background(Color.Black,RoundedCornerShape(12.dp)),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally){
     if(clip!=null)AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true}},modifier=Modifier.fillMaxSize()) else Text("Import video clips",color=muted)
    }
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+    OutlinedButton(onClick={addVideos.launch(arrayOf("video/*"))},modifier=Modifier.weight(1f)){Icon(Icons.Default.VideoLibrary,null);Text(" Import")}
+    OutlinedButton(enabled=clip!=null,onClick={if(player.isPlaying)player.pause()else player.play()},modifier=Modifier.weight(1f)){Icon(if(player.isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow,null);Text(" Play")}
+    OutlinedButton(enabled=clips.isNotEmpty(),onClick={
+     val items=clips.mapIndexed{index,c->MediaItem.Builder().setMediaId(index.toString()).setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
+     timelinePreview=true;player.setMediaItems(items,true);player.prepare()
+     clips.firstOrNull()?.let{player.setVideoEffects(clipEffects(it,overlayText));player.setPlaybackSpeed(it.speed)}
+     player.play();status="Playing full timeline • ${clips.size} clips"
+    }){Icon(Icons.Default.PlayArrow,null);Text(" Full")}
+   }
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
+    Text(if(toolsExpanded)"EDITING TOOLS" else "TOOLS MINIMIZED",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp)
+    TextButton(onClick={toolsExpanded=!toolsExpanded}){Icon(if(toolsExpanded)Icons.Default.ExpandMore else Icons.Default.ExpandLess,null);Text(if(toolsExpanded)"Collapse" else "Expand")}
+   }
+   Surface(Modifier.fillMaxWidth().weight(if(toolsExpanded)0.62f else 0.16f),color=panel,shape=RoundedCornerShape(topStart=14.dp,topEnd=14.dp)){
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(10.dp)){
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
     OutlinedButton(onClick={addVideos.launch(arrayOf("video/*"))},modifier=Modifier.weight(1f)){Icon(Icons.Default.VideoLibrary,null);Text(" Import clips")}
     OutlinedButton(enabled=clip!=null,onClick={if(player.isPlaying)player.pause()else player.play()},modifier=Modifier.weight(1f)){Icon(if(player.isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow,null);Text(" Play")}
@@ -189,6 +206,8 @@ private fun EditorScreen(){
    if(exporting)LinearProgressIndicator(Modifier.fillMaxWidth())
    Spacer(Modifier.height(8.dp));Text(status,color=muted,fontSize=11.sp)
    Text("v0.3.0 • Multi-clip editor foundation",color=muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(top=10.dp))
+    }
+   }
   }
  }
 }
