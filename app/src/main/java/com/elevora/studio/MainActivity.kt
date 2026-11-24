@@ -98,14 +98,14 @@ private fun EditorScreen(){
    override fun onMediaItemTransition(mediaItem:MediaItem?,reason:Int){
     val clipId=mediaItem?.mediaId?.toIntOrNull()
     val index=clipId?.takeIf{it in clips.indices}?:-1
-    if(index>=0){selected=index;val c=clips[index];player.setPlaybackSpeed(c.speed)}
+    if(index>=0){selected=index;val c=clips[index];player.setVideoEffects(clipEffects(c,overlayText));player.setPlaybackSpeed(c.speed)}
    }
    override fun onPlaybackStateChanged(playbackState:Int){if(playbackState==Player.STATE_ENDED)timelinePreview=false}
   }
   player.addListener(listener)
   onDispose{player.removeListener(listener)}
  }
- LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}}
+ LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview,clip?.brightness,clip?.contrast,clip?.look,clip?.rotation,overlayText){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,overlayText));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
  val clip=clips.getOrNull(selected)
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
@@ -169,12 +169,7 @@ private fun EditorScreen(){
     val out=File(context.cacheDir,"elevora_${System.currentTimeMillis()}.mp4")
     val items=clips.map{c->
      val media=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()
-     val effects=mutableListOf<Effect>();effects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(c.rotation.toFloat()).build())
-     val rgb=when(c.look){"Warm"->Triple(1.12f,1.02f,.88f);"Cool"->Triple(.88f,1.02f,1.12f);"Vintage"->Triple(1.08f,.94f,.82f);"Mono"->Triple(.65f,.65f,.65f);else->Triple(1f,1f,1f)}
-     if(c.look!="Original")effects.add(RgbAdjustment.Builder().setRedScale(rgb.first).setGreenScale(rgb.second).setBlueScale(rgb.third).build())
-     if(c.brightness!=0f)effects.add(Brightness(c.brightness))
-     if(c.contrast!=0f)effects.add(Contrast(c.contrast))
-     if(overlayText.isNotBlank())effects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(SpannableString(overlayText)))))
+     val effects=clipEffects(c,overlayText)
      val sp=object:SpeedProvider{override fun getSpeed(timeUs:Long)=c.speed;override fun getNextSpeedChangeTimeUs(timeUs:Long)=androidx.media3.common.C.TIME_UNSET}
      EditedMediaItem.Builder(media).setSpeed(sp).setEffects(Effects(emptyList(),effects)).build()
     }
