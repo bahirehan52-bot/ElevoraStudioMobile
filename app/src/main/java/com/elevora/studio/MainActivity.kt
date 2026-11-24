@@ -74,6 +74,10 @@ private fun EditorScreen(){
  var audioName by remember{ mutableStateOf("No background music") }
  var status by remember{ mutableStateOf("Import videos to start editing.") }
  var overlayText by remember{ mutableStateOf("") }
+ var textX by remember{ mutableFloatStateOf(0f) }
+ var textY by remember{ mutableFloatStateOf(0f) }
+ var textScale by remember{ mutableFloatStateOf(1f) }
+ var activeTab by remember{ mutableStateOf("Media") }
  var exporting by remember{ mutableStateOf(false) }
  var timelinePreview by remember{ mutableStateOf(false) }
  var lookMenu by remember{ mutableStateOf(false) }
