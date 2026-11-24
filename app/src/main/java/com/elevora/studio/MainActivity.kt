@@ -98,16 +98,15 @@ private fun EditorScreen(){
    override fun onMediaItemTransition(mediaItem:MediaItem?,reason:Int){
     val clipId=mediaItem?.mediaId?.toIntOrNull()
     val index=clipId?.takeIf{it in clips.indices}?:-1
-    if(index>=0){selected=index;val c=clips[index];player.setPlaybackSpeed(c.speed);player.setVideoEffects(clipEffects(c,overlayText))}
+    if(index>=0){selected=index;val c=clips[index];player.setPlaybackSpeed(c.speed)}
    }
    override fun onPlaybackStateChanged(playbackState:Int){if(playbackState==Player.STATE_ENDED)timelinePreview=false}
   }
   player.addListener(listener)
   onDispose{player.removeListener(listener)}
  }
- LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,overlayText));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}}
+ LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}}
  val clip=clips.getOrNull(selected)
- LaunchedEffect(clip,overlayText){if(clip!=null)player.setVideoEffects(clipEffects(clip,overlayText))}
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
@@ -130,7 +129,7 @@ private fun EditorScreen(){
     timelinePreview=true
     player.setMediaItems(items,true)
     player.prepare()
-    clips.firstOrNull()?.let{player.setPlaybackSpeed(it.speed);player.setVideoEffects(clipEffects(it,overlayText))}
+    clips.firstOrNull()?.let{player.setPlaybackSpeed(it.speed)}
     player.play()
     status="Playing full timeline • ${clips.size} clips"
    },modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PlayArrow,null);Text(" Play full timeline")}
@@ -150,10 +149,10 @@ private fun EditorScreen(){
     OutlinedButton(enabled=clip!=null,onClick={val c=clip!!;val mid=c.start+(c.end-c.start)/2;if(mid>c.start&&mid<c.end){clips[selected]=c.copy(end=mid);clips.add(selected+1,c.copy(start=mid));status="Clip split."}},modifier=Modifier.weight(1f)){Icon(Icons.Default.ContentCut,null);Text(" Split")}
     OutlinedButton(enabled=clip!=null,onClick={removeClip(selected)},modifier=Modifier.weight(1f)){Icon(Icons.Default.Delete,null);Text(" Delete")}
    }
-   Spacer(Modifier.height(14.dp));Text("CLIP CONTROLS",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp)
+   Spacer(Modifier.height(14.dp));Text("CLIP CONTROLS • EFFECTS APPLY ON EXPORT",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp)
    if(clip!=null){
     Text("Trim: ${tc(clip.start)} to ${tc(clip.end)}",color=muted,fontSize=11.sp)
-    RangeSlider(value=clip.start.toFloat()..clip.end.toFloat(),onValueChange={r->val s=r.start.toLong().coerceIn(0,clip.duration-1);val e=r.endInclusive.toLong().coerceIn(s+1,clip.duration);update(clip.copy(start=s,end=e))},valueRange=0f..clip.duration.toFloat().coerceAtLeast(1f),onValueChangeFinished={val latest=clips.getOrNull(selected);if(latest!=null){val item=MediaItem.Builder().setUri(Uri.parse(latest.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(latest.start).setEndPositionMs(latest.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(latest.speed);player.setVideoEffects(clipEffects(latest,overlayText))}})
+    RangeSlider(value=clip.start.toFloat()..clip.end.toFloat(),onValueChange={r->val s=r.start.toLong().coerceIn(0,clip.duration-1);val e=r.endInclusive.toLong().coerceIn(s+1,clip.duration);update(clip.copy(start=s,end=e))},valueRange=0f..clip.duration.toFloat().coerceAtLeast(1f),onValueChangeFinished={val latest=clips.getOrNull(selected);if(latest!=null){val resume=player.playWhenReady;val item=MediaItem.Builder().setUri(Uri.parse(latest.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(latest.start).setEndPositionMs(latest.end).build()).build();player.setMediaItem(item,true);player.setPlaybackSpeed(latest.speed);player.prepare();player.playWhenReady=resume}})
     Text("Speed ${String.format(Locale.US,"%.2f",clip.speed)}x",color=Color.White);Slider(value=clip.speed,onValueChange={update(clip.copy(speed=it));player.setPlaybackSpeed(it)},valueRange=.25f..3f)
     Text("Brightness ${String.format(Locale.US,"%.2f",clip.brightness)}",color=Color.White);Slider(value=clip.brightness,onValueChange={update(clip.copy(brightness=it))},valueRange=-1f..1f)
     Text("Contrast ${String.format(Locale.US,"%.2f",clip.contrast)}",color=Color.White);Slider(value=clip.contrast,onValueChange={update(clip.copy(contrast=it))},valueRange=-1f..1f)
