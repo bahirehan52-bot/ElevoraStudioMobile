@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.audio.SpeedProvider
@@ -72,6 +73,7 @@ private fun EditorScreen(){
  var status by remember{ mutableStateOf("Import videos to start editing.") }
  var overlayText by remember{ mutableStateOf("") }
  var exporting by remember{ mutableStateOf(false) }
+ var timelinePreview by remember{ mutableStateOf(false) }
  var lookMenu by remember{ mutableStateOf(false) }
  val player= remember{ExoPlayer.Builder(context).build()}
  DisposableEffect(Unit){onDispose{player.release()}}
@@ -91,7 +93,19 @@ private fun EditorScreen(){
   val a=root.getJSONArray("clips");for(i in 0 until a.length()){val o=a.getJSONObject(i);clips.add(EditClip(o.getString("uri"),o.optString("name","Clip"),o.getLong("duration"),o.optLong("start"),o.optLong("end"),o.optDouble("speed",1.0).toFloat(),o.optInt("rotation"),o.optString("look","Original"),o.optDouble("brightness",0.0).toFloat(),o.optDouble("contrast",0.0).toFloat()))}
   val au=root.optString("audio","");audioUri=if(au.isBlank())null else Uri.parse(au);audioName=if(audioUri==null)"No background music" else "Background music";selected=0.coerceAtMost(clips.lastIndex);status="Project loaded."
  }.onFailure{status="Open failed: ${it.message}"}}
- LaunchedEffect(selected,clips.size,clipKey(clips,selected)){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,overlayText));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}
+ DisposableEffect(player){
+  val listener=object:Player.Listener{
+   override fun onMediaItemTransition(mediaItem:MediaItem?,reason:Int){
+    val uri=mediaItem?.localConfiguration?.uri?.toString()
+    val index=clips.indexOfFirst{it.uri==uri}
+    if(index>=0){selected=index;val c=clips[index];player.setPlaybackSpeed(c.speed);player.setVideoEffects(clipEffects(c,overlayText))}
+   }
+   override fun onPlaybackStateChanged(playbackState:Int){if(playbackState==Player.STATE_ENDED)timelinePreview=false}
+  }
+  player.addListener(listener)
+  onDispose{player.removeListener(listener)}
+ }
+ LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,overlayText));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}}
  val clip=clips.getOrNull(selected)
  LaunchedEffect(clip,overlayText){if(clip!=null)player.setVideoEffects(clipEffects(clip,overlayText))}
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
@@ -111,9 +125,18 @@ private fun EditorScreen(){
     OutlinedButton(onClick={addVideos.launch(arrayOf("video/*"))},modifier=Modifier.weight(1f)){Icon(Icons.Default.VideoLibrary,null);Text(" Import clips")}
     OutlinedButton(enabled=clip!=null,onClick={if(player.isPlaying)player.pause()else player.play()},modifier=Modifier.weight(1f)){Icon(if(player.isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow,null);Text(" Play")}
    }
+   OutlinedButton(enabled=clips.isNotEmpty(),onClick={
+    val items=clips.map{c->MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
+    timelinePreview=true
+    player.setMediaItems(items,true)
+    player.prepare()
+    clips.firstOrNull()?.let{player.setPlaybackSpeed(it.speed);player.setVideoEffects(clipEffects(it,overlayText))}
+    player.play()
+    status="Playing full timeline • ${clips.size} clips"
+   },modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PlayArrow,null);Text(" Play full timeline")}
    Spacer(Modifier.height(14.dp));Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("VIDEO TIMELINE • V1",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp);Text("${clips.size} clips",color=muted,fontSize=11.sp)}
    clips.forEachIndexed{index,c->
-    Surface(color=if(index==selected)Color(0xFF203B43)else panel,shape=RoundedCornerShape(9.dp),modifier=Modifier.fillMaxWidth().padding(vertical=3.dp),onClick={selected=index}){
+    Surface(color=if(index==selected)Color(0xFF203B43)else panel,shape=RoundedCornerShape(9.dp),modifier=Modifier.fillMaxWidth().padding(vertical=3.dp),onClick={timelinePreview=false;selected=index}){
      Row(Modifier.padding(8.dp),verticalAlignment=Alignment.CenterVertically){
       Text("${index+1}",color=mint,modifier=Modifier.width(24.dp),fontWeight=FontWeight.Bold)
       Column(Modifier.weight(1f)){Text(c.name,color=Color.White,maxLines=1,fontSize=12.sp);Text("${tc(c.start)}–${tc(c.end)} • ${c.speed}x",color=muted,fontSize=10.sp)}
