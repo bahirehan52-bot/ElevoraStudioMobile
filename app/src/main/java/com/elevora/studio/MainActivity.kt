@@ -237,7 +237,6 @@ private fun EditorScreen(){
    }
   }
  }
- }
 }
 private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.uri?:"empty"
 
@@ -255,7 +254,10 @@ private fun clipEffects(c: EditClip, text: String, textX: Float = 0f, textY: Flo
  if(c.look != "Original") effects.add(RgbAdjustment.Builder().setRedScale(rgb.first).setGreenScale(rgb.second).setBlueScale(rgb.third).build())
  if(c.brightness != 0f) effects.add(Brightness(c.brightness))
  if(c.contrast != 0f) effects.add(Contrast(c.contrast))
- if(text.isNotBlank()) {\n  val settings = StaticOverlaySettings.Builder().setBackgroundFrameAnchor(textX, textY).setOverlayFrameAnchor(0f, 0f).setScale(textScale, textScale).build()\n  effects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(SpannableString(text), settings))))\n }
+ if(text.isNotBlank()) {
+  val settings = StaticOverlaySettings.Builder().setBackgroundFrameAnchor(textX, textY).setOverlayFrameAnchor(0f, 0f).setScale(textScale, textScale).build()
+  effects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(SpannableString(text), settings))))
+ }
  return effects
 }
 
