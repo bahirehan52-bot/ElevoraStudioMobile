@@ -91,8 +91,9 @@ private fun EditorScreen(){
   val a=root.getJSONArray("clips");for(i in 0 until a.length()){val o=a.getJSONObject(i);clips.add(EditClip(o.getString("uri"),o.optString("name","Clip"),o.getLong("duration"),o.optLong("start"),o.optLong("end"),o.optDouble("speed",1.0).toFloat(),o.optInt("rotation"),o.optString("look","Original"),o.optDouble("brightness",0.0).toFloat(),o.optDouble("contrast",0.0).toFloat()))}
   val au=root.optString("audio","");audioUri=if(au.isBlank())null else Uri.parse(au);audioName=if(audioUri==null)"No background music" else "Background music";selected=0.coerceAtMost(clips.lastIndex);status="Project loaded."
  }.onFailure{status="Open failed: ${it.message}"}}
- LaunchedEffect(selected,clips.size,clipKey(clips,selected)){val c=clips.getOrNull(selected);if(c!=null){val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}
+ LaunchedEffect(selected,clips.size,clipKey(clips,selected)){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,overlayText));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else player.stop()}
  val clip=clips.getOrNull(selected)
+ LaunchedEffect(clip,overlayText){if(clip!=null)player.setVideoEffects(clipEffects(clip,overlayText))}
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
@@ -129,7 +130,7 @@ private fun EditorScreen(){
    Spacer(Modifier.height(14.dp));Text("CLIP CONTROLS",color=mint,fontWeight=FontWeight.Bold,fontSize=12.sp)
    if(clip!=null){
     Text("Trim: ${tc(clip.start)} to ${tc(clip.end)}",color=muted,fontSize=11.sp)
-    RangeSlider(value=clip.start.toFloat()..clip.end.toFloat(),onValueChange={r->val s=r.start.toLong().coerceIn(0,clip.duration-1);val e=r.endInclusive.toLong().coerceIn(s+1,clip.duration);update(clip.copy(start=s,end=e))},valueRange=0f..clip.duration.toFloat().coerceAtLeast(1f))
+    RangeSlider(value=clip.start.toFloat()..clip.end.toFloat(),onValueChange={r->val s=r.start.toLong().coerceIn(0,clip.duration-1);val e=r.endInclusive.toLong().coerceIn(s+1,clip.duration);update(clip.copy(start=s,end=e))},valueRange=0f..clip.duration.toFloat().coerceAtLeast(1f),onValueChangeFinished={val latest=clips.getOrNull(selected);if(latest!=null){val item=MediaItem.Builder().setUri(Uri.parse(latest.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(latest.start).setEndPositionMs(latest.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(latest.speed);player.setVideoEffects(clipEffects(latest,overlayText))}})
     Text("Speed ${String.format(Locale.US,"%.2f",clip.speed)}x",color=Color.White);Slider(value=clip.speed,onValueChange={update(clip.copy(speed=it));player.setPlaybackSpeed(it)},valueRange=.25f..3f)
     Text("Brightness ${String.format(Locale.US,"%.2f",clip.brightness)}",color=Color.White);Slider(value=clip.brightness,onValueChange={update(clip.copy(brightness=it))},valueRange=-1f..1f)
     Text("Contrast ${String.format(Locale.US,"%.2f",clip.contrast)}",color=Color.White);Slider(value=clip.contrast,onValueChange={update(clip.copy(contrast=it))},valueRange=-1f..1f)
@@ -174,4 +175,23 @@ private fun EditorScreen(){
  }
 }
 private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.uri?:"empty"
+
+@OptIn(UnstableApi::class)
+private fun clipEffects(c: EditClip, text: String): List<Effect> {
+ val effects = mutableListOf<Effect>()
+ effects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(c.rotation.toFloat()).build())
+ val rgb = when(c.look) {
+  "Warm" -> Triple(1.12f,1.02f,.88f)
+  "Cool" -> Triple(.88f,1.02f,1.12f)
+  "Vintage" -> Triple(1.08f,.94f,.82f)
+  "Mono" -> Triple(.65f,.65f,.65f)
+  else -> Triple(1f,1f,1f)
+ }
+ if(c.look != "Original") effects.add(RgbAdjustment.Builder().setRedScale(rgb.first).setGreenScale(rgb.second).setBlueScale(rgb.third).build())
+ if(c.brightness != 0f) effects.add(Brightness(c.brightness))
+ if(c.contrast != 0f) effects.add(Contrast(c.contrast))
+ if(text.isNotBlank()) effects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(SpannableString(text)))))
+ return effects
+}
+
 private fun tc(ms:Long):String{val s=(ms/1000).coerceAtLeast(0);return String.format(Locale.US,"%02d:%02d",s/60,s%60)}
