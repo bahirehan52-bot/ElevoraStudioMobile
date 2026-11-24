@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -121,13 +122,13 @@ private fun EditorScreen(){
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
-  Column(Modifier.fillMaxSize().background(bg).padding(horizontal=10.dp, vertical=6.dp)){
+  Column(Modifier.fillMaxSize().background(bg).statusBarsPadding().navigationBarsPadding().padding(horizontal=10.dp, vertical=6.dp)){
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
     Column{Text("ELEVORA",color=mint,fontSize=21.sp,fontWeight=FontWeight.Black,letterSpacing=2.sp);Text("STUDIO • MOBILE VIDEO EDITOR",color=muted,fontSize=9.sp)}
     Row{IconButton(onClick={load.launch(arrayOf("application/json","text/*"))}){Icon(Icons.Default.FolderOpen,"Open project",tint=mint)};IconButton(onClick={save.launch("${projectName.replace(" ","_")}.elevora.json")}){Icon(Icons.Default.Save,"Save project",tint=mint)}}
    }
    OutlinedTextField(projectName,{projectName=it},label={Text("Project name")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-   Column(Modifier.fillMaxWidth().weight(1f).background(Color.Black,RoundedCornerShape(12.dp)),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally){
+   Column(Modifier.fillMaxWidth().weight(1f).border(1.5.dp,mint.copy(alpha=0.65f),RoundedCornerShape(12.dp)).background(Color.Black,RoundedCornerShape(12.dp)),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally){
     if(clip!=null)AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true}},modifier=Modifier.fillMaxSize()) else Text("Import video clips",color=muted)
    }
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
@@ -143,12 +144,12 @@ private fun EditorScreen(){
    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(7.dp)){
     listOf("Media","Edit","Text","Audio","Effects","Export").forEach{tab->
      val chosen=activeTab==tab
-     Surface(color=if(chosen)mint else panel,shape=RoundedCornerShape(18.dp),onClick={activeTab=tab}){
+     Surface(color=if(chosen)mint else panel,shape=RoundedCornerShape(18.dp),modifier=Modifier.border(1.dp,if(chosen)mint else Color(0xFF344657),RoundedCornerShape(18.dp)),onClick={activeTab=tab}){
       Text(tab,color=if(chosen)bg else Color.White,fontWeight=FontWeight.Bold,fontSize=12.sp,modifier=Modifier.padding(horizontal=17.dp,vertical=10.dp))
      }
     }
    }
-   Surface(Modifier.fillMaxWidth().weight(0.78f),color=panel,shape=RoundedCornerShape(topStart=14.dp,topEnd=14.dp)){
+   Surface(Modifier.fillMaxWidth().weight(0.78f).border(1.dp,mint.copy(alpha=0.28f),RoundedCornerShape(topStart=14.dp,topEnd=14.dp)),color=panel,shape=RoundedCornerShape(topStart=14.dp,topEnd=14.dp)){
     Column(Modifier.fillMaxSize().padding(horizontal=10.dp,vertical=5.dp),verticalArrangement=Arrangement.spacedBy(3.dp)){
      when(activeTab){
       "Media"->{
@@ -159,7 +160,7 @@ private fun EditorScreen(){
        }
        Row(Modifier.fillMaxWidth().weight(1f).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){
         clips.forEachIndexed{index,c->
-         Surface(color=if(index==selected)Color(0xFF24534F)else Color(0xFF243344),shape=RoundedCornerShape(9.dp),onClick={timelinePreview=false;selected=index},modifier=Modifier.width(132.dp)){
+         Surface(color=if(index==selected)Color(0xFF24534F)else Color(0xFF243344),shape=RoundedCornerShape(9.dp),modifier=Modifier.width(132.dp).border(1.dp,if(index==selected)mint else Color(0xFF405266),RoundedCornerShape(9.dp)),onClick={timelinePreview=false;selected=index}){
           Column(Modifier.padding(9.dp)){
            Text("CLIP ${index+1}",color=mint,fontSize=10.sp,fontWeight=FontWeight.Bold)
            Text(c.name,color=Color.White,maxLines=1,fontSize=11.sp)
@@ -172,7 +173,7 @@ private fun EditorScreen(){
           }
          }
         }
-        if(clips.isEmpty())Text("Import clips to build your timeline",color=muted,fontSize=12.sp)
+        if(clips.isEmpty())Column(Modifier.fillMaxWidth().padding(vertical=24.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Default.VideoLibrary,null,tint=muted,modifier=Modifier.size(30.dp));Text("Your timeline is empty",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.SemiBold);Text("Import a video to start editing",color=muted,fontSize=11.sp)}
        }
        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
         OutlinedButton(enabled=clip!=null,onClick={val c=clip!!;val mid=c.start+(c.end-c.start)/2;if(mid>c.start&&mid<c.end){clips[selected]=c.copy(end=mid);clips.add(selected+1,c.copy(start=mid));status="Clip split."}},modifier=Modifier.weight(1f)){Icon(Icons.Default.ContentCut,null);Text("Split")}
