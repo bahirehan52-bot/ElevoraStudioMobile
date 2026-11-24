@@ -130,7 +130,7 @@ private fun EditorScreen(){
     timelinePreview=true
     player.setMediaItems(items,true)
     player.prepare()
-    clips.firstOrNull()?.let{player.setPlaybackSpeed(it.speed)}
+    clips.firstOrNull()?.let{player.setVideoEffects(clipEffects(it,overlayText));player.setPlaybackSpeed(it.speed)}
     player.play()
     status="Playing full timeline • ${clips.size} clips"
    },modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PlayArrow,null);Text(" Play full timeline")}
