@@ -74,6 +74,10 @@ private fun EditorScreen(){
  var audioName by remember{ mutableStateOf("No background music") }
  var status by remember{ mutableStateOf("Import videos to start editing.") }
  var overlayText by remember{ mutableStateOf("") }
+ var appliedOverlayText by remember{ mutableStateOf("") }
+ var appliedTextX by remember{ mutableFloatStateOf(0f) }
+ var appliedTextY by remember{ mutableFloatStateOf(0f) }
+ var appliedTextScale by remember{ mutableFloatStateOf(1f) }
  var textX by remember{ mutableFloatStateOf(0f) }
  var textY by remember{ mutableFloatStateOf(0f) }
  var textScale by remember{ mutableFloatStateOf(1f) }
@@ -95,7 +99,7 @@ private fun EditorScreen(){
   root.put("clips",arr);context.contentResolver.openOutputStream(u)!!.use{it.write(root.toString(2).toByteArray())};status="Project saved."
  }.onFailure{status="Save failed: ${it.message}"}}
  val load=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->if(u!=null)runCatching{
-  val root=context.contentResolver.openInputStream(u)!!.bufferedReader().use{JSONObject(it.readText())};projectName=root.optString("name","My Video");overlayText=root.optString("overlayText","");textX=root.optDouble("textX",0.0).toFloat();textY=root.optDouble("textY",0.0).toFloat();textScale=root.optDouble("textScale",1.0).toFloat();clips.clear()
+  val root=context.contentResolver.openInputStream(u)!!.bufferedReader().use{JSONObject(it.readText())};projectName=root.optString("name","My Video");overlayText=root.optString("overlayText","");textX=root.optDouble("textX",0.0).toFloat();textY=root.optDouble("textY",0.0).toFloat();textScale=root.optDouble("textScale",1.0).toFloat();appliedOverlayText=overlayText;appliedTextX=textX;appliedTextY=textY;appliedTextScale=textScale;clips.clear()
   val a=root.getJSONArray("clips");for(i in 0 until a.length()){val o=a.getJSONObject(i);clips.add(EditClip(o.getString("uri"),o.optString("name","Clip"),o.getLong("duration"),o.optLong("start"),o.optLong("end"),o.optDouble("speed",1.0).toFloat(),o.optInt("rotation"),o.optString("look","Original"),o.optDouble("brightness",0.0).toFloat(),o.optDouble("contrast",0.0).toFloat()))}
   val au=root.optString("audio","");audioUri=if(au.isBlank())null else Uri.parse(au);audioName=if(audioUri==null)"No background music" else "Background music";selected=0.coerceAtMost(clips.lastIndex);status="Project loaded."
  }.onFailure{status="Open failed: ${it.message}"}}
@@ -104,7 +108,7 @@ private fun EditorScreen(){
    override fun onMediaItemTransition(mediaItem:MediaItem?,reason:Int){
     val clipId=mediaItem?.mediaId?.toIntOrNull()
     val index=clipId?.takeIf{it in clips.indices}?:-1
-    if(index>=0){selected=index;val c=clips[index];player.setVideoEffects(clipEffects(c,overlayText,textX,textY,textScale));player.setPlaybackSpeed(c.speed)}
+    if(index>=0){selected=index;val c=clips[index];player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));player.setPlaybackSpeed(c.speed)}
    }
    override fun onPlaybackStateChanged(playbackState:Int){if(playbackState==Player.STATE_ENDED)timelinePreview=false}
   }
@@ -113,7 +117,7 @@ private fun EditorScreen(){
  }
  LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,overlayText));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
  val clip=clips.getOrNull(selected)
- LaunchedEffect(clip?.brightness,clip?.contrast,clip?.look,clip?.rotation,overlayText,textX,textY,textScale,timelinePreview,selected){val current=clips.getOrNull(selected);if(current!=null)player.setVideoEffects(clipEffects(current,overlayText,textX,textY,textScale))}
+ LaunchedEffect(clip?.brightness,clip?.contrast,clip?.look,clip?.rotation,timelinePreview,selected){val current=clips.getOrNull(selected);if(current!=null)player.setVideoEffects(clipEffects(current,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale))}
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
@@ -132,7 +136,7 @@ private fun EditorScreen(){
     OutlinedButton(enabled=clips.isNotEmpty(),onClick={
      val items=clips.mapIndexed{index,c->MediaItem.Builder().setMediaId(index.toString()).setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
      timelinePreview=true;player.setMediaItems(items,true);player.prepare()
-     clips.firstOrNull()?.let{player.setVideoEffects(clipEffects(it,overlayText,textX,textY,textScale));player.setPlaybackSpeed(it.speed)}
+     clips.firstOrNull()?.let{player.setVideoEffects(clipEffects(it,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));player.setPlaybackSpeed(it.speed)}
      player.play();status="Playing full timeline • ${clips.size} clips"
     }){Icon(Icons.Default.PlayArrow,null);Text(" Full")}
    }
@@ -193,6 +197,7 @@ private fun EditorScreen(){
        Slider(value=textY,onValueChange={textY=it},valueRange=-1f..1f)
        Text("Text size  ${String.format(Locale.US,"%.1f",textScale)}x",color=Color.White,fontSize=11.sp)
        Slider(value=textScale,onValueChange={textScale=it},valueRange=.3f..2.5f)
+       Button(onClick={val current=clips.getOrNull(selected);if(current!=null){val wasPlaying=player.playWhenReady;val position=player.currentPosition;appliedOverlayText=overlayText;appliedTextX=textX;appliedTextY=textY;appliedTextScale=textScale;player.setVideoEffects(clipEffects(current,overlayText,textX,textY,textScale));player.seekTo(position);if(wasPlaying)player.play();status="Text applied to preview."}},modifier=Modifier.fillMaxWidth()){Text("Apply text to preview")}
       }
       "Audio"->{
        Text("AUDIO TRACK • A1",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
