@@ -96,8 +96,8 @@ private fun EditorScreen(){
  DisposableEffect(player){
   val listener=object:Player.Listener{
    override fun onMediaItemTransition(mediaItem:MediaItem?,reason:Int){
-    val uri=mediaItem?.localConfiguration?.uri?.toString()
-    val index=clips.indexOfFirst{it.uri==uri}
+    val clipId=mediaItem?.mediaId?.toIntOrNull()
+    val index=clipId?.takeIf{it in clips.indices}?:-1
     if(index>=0){selected=index;val c=clips[index];player.setPlaybackSpeed(c.speed);player.setVideoEffects(clipEffects(c,overlayText))}
    }
    override fun onPlaybackStateChanged(playbackState:Int){if(playbackState==Player.STATE_ENDED)timelinePreview=false}
@@ -126,7 +126,7 @@ private fun EditorScreen(){
     OutlinedButton(enabled=clip!=null,onClick={if(player.isPlaying)player.pause()else player.play()},modifier=Modifier.weight(1f)){Icon(if(player.isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow,null);Text(" Play")}
    }
    OutlinedButton(enabled=clips.isNotEmpty(),onClick={
-    val items=clips.map{c->MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
+    val items=clips.mapIndexed{index,c->MediaItem.Builder().setMediaId(index.toString()).setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
     timelinePreview=true
     player.setMediaItems(items,true)
     player.prepare()
