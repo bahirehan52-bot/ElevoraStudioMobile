@@ -21,9 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.roundToInt
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.ui.input.pointer.pointerInput
-import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -64,7 +62,8 @@ private val panel = Color(0xFF172331)
 private val mint = Color(0xFF54E0C0)
 private val muted = Color(0xFF9AA9B9)
 
-data class EditClip(val uri:String,val name:String,val duration:Long,val start:Long=0,val end:Long=duration,val speed:Float=1f,val rotation:Int=0,val look:String="Original",val brightness:Float=0f,val contrast:Float=0f,val cropZoom:Float=1f)
+data class SpeedKeyframe(val timeMs:Long,val speed:Float)
+data class EditClip(val uri:String,val name:String,val duration:Long,val start:Long=0,val end:Long=duration,val speed:Float=1f,val rotation:Int=0,val look:String="Original",val brightness:Float=0f,val contrast:Float=0f,val cropZoom:Float=1f,val speedKeyframes:List<SpeedKeyframe> = emptyList())
 
 class MainActivity:ComponentActivity(){
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{EditorScreen()}}
@@ -92,6 +91,7 @@ private fun EditorScreen(){
  var exporting by remember{ mutableStateOf(false) }
  var timelinePreview by remember{ mutableStateOf(false) }
  var lookMenu by remember{ mutableStateOf(false) }
+ var selectedKeyframe by remember{mutableIntStateOf(-1)}
  val player= remember{ExoPlayer.Builder(context).build()}
  DisposableEffect(Unit){onDispose{player.release()}}
  fun duration(uri:Uri):Long{val r=MediaMetadataRetriever();return try{r.setDataSource(context,uri);r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?:0L}finally{runCatching{r.release()}}}
@@ -102,12 +102,12 @@ private fun EditorScreen(){
  val addAudio=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->if(u!=null){runCatching{context.contentResolver.takePersistableUriPermission(u,1)};audioUri=u;audioName=u.lastPathSegment?.substringAfterLast('/')?:"Music";status="Background music added."}}
  val save=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){u->if(u!=null)runCatching{
   val root=JSONObject().put("name",projectName).put("audio",audioUri?.toString()?:"").put("overlayText",overlayText).put("textX",textX.toDouble()).put("textY",textY.toDouble()).put("textScale",textScale.toDouble())
-  val arr=JSONArray();clips.forEach{c->arr.put(JSONObject().put("uri",c.uri).put("name",c.name).put("duration",c.duration).put("start",c.start).put("end",c.end).put("speed",c.speed.toDouble()).put("rotation",c.rotation).put("look",c.look).put("brightness",c.brightness.toDouble()).put("contrast",c.contrast.toDouble()).put("cropZoom",c.cropZoom.toDouble()))}
+  val arr=JSONArray();clips.forEach{c->arr.put(JSONObject().put("uri",c.uri).put("name",c.name).put("duration",c.duration).put("start",c.start).put("end",c.end).put("speed",c.speed.toDouble()).put("rotation",c.rotation).put("look",c.look).put("brightness",c.brightness.toDouble()).put("contrast",c.contrast.toDouble()).put("cropZoom",c.cropZoom.toDouble()).put("speedKeyframes",JSONArray().apply{c.speedKeyframes.forEach{k->put(JSONObject().put("timeMs",k.timeMs).put("speed",k.speed.toDouble()))}}))}
   root.put("clips",arr);context.contentResolver.openOutputStream(u)!!.use{it.write(root.toString(2).toByteArray())};status="Project saved."
  }.onFailure{status="Save failed: ${it.message}"}}
  val load=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->if(u!=null)runCatching{
   val root=context.contentResolver.openInputStream(u)!!.bufferedReader().use{JSONObject(it.readText())};projectName=root.optString("name","My Video");overlayText=root.optString("overlayText","");textX=root.optDouble("textX",0.0).toFloat();textY=root.optDouble("textY",0.0).toFloat();textScale=root.optDouble("textScale",1.0).toFloat();appliedOverlayText=overlayText;appliedTextX=textX;appliedTextY=textY;appliedTextScale=textScale;clips.clear()
-  val a=root.getJSONArray("clips");for(i in 0 until a.length()){val o=a.getJSONObject(i);clips.add(EditClip(o.getString("uri"),o.optString("name","Clip"),o.getLong("duration"),o.optLong("start"),o.optLong("end"),o.optDouble("speed",1.0).toFloat(),o.optInt("rotation"),o.optString("look","Original"),o.optDouble("brightness",0.0).toFloat(),o.optDouble("contrast",0.0).toFloat(),o.optDouble("cropZoom",1.0).toFloat()))}
+  val a=root.getJSONArray("clips");for(i in 0 until a.length()){val o=a.getJSONObject(i);clips.add(EditClip(o.getString("uri"),o.optString("name","Clip"),o.getLong("duration"),o.optLong("start"),o.optLong("end"),o.optDouble("speed",1.0).toFloat(),o.optInt("rotation"),o.optString("look","Original"),o.optDouble("brightness",0.0).toFloat(),o.optDouble("contrast",0.0).toFloat(),o.optDouble("cropZoom",1.0).toFloat(),(o.optJSONArray("speedKeyframes")?:JSONArray()).let{keys->(0 until keys.length()).map{ki->keys.getJSONObject(ki).let{k->SpeedKeyframe(k.optLong("timeMs"),k.optDouble("speed",1.0).toFloat())}}}))}
   val au=root.optString("audio","");audioUri=if(au.isBlank())null else Uri.parse(au);audioName=if(audioUri==null)"No background music" else "Background music";selected=0.coerceAtMost(clips.lastIndex);status="Project loaded."
  }.onFailure{status="Open failed: ${it.message}"}}
  DisposableEffect(player){
@@ -148,7 +148,7 @@ private fun EditorScreen(){
     }){Icon(Icons.Default.PlayArrow,null);Text(" Full")}
    }
    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(7.dp)){
-    listOf("Media","Crop","Text","Audio","Effects","Export").forEach{tab->
+    listOf("Media","Crop","Keyframes","Text","Audio","Effects","Export").forEach{tab->
      val chosen=activeTab==tab
      Surface(color=if(chosen)mint else panel,shape=RoundedCornerShape(18.dp),modifier=Modifier.border(1.dp,if(chosen)mint else Color(0xFF344657),RoundedCornerShape(18.dp)),onClick={activeTab=tab}){
       Text(tab,color=if(chosen)bg else Color.White,fontWeight=FontWeight.Bold,fontSize=12.sp,modifier=Modifier.padding(horizontal=17.dp,vertical=10.dp))
