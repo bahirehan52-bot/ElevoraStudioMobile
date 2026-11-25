@@ -138,9 +138,16 @@ private fun EditorScreen(){
  }
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun applyPreviewEffects(c:EditClip,frame:AnimationKeyframe?=null){
-  val wasPlaying=player.playWhenReady
-  player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale,frame))
-  if(wasPlaying)player.playWhenReady=true
+  // Never replace the renderer effect graph while frames are actively playing.
+  if(player.isPlaying){
+   status="Pause preview before applying this effect."
+   return
+  }
+  val position=player.currentPosition
+  val sample=frame?:c.animationKeyframes.getOrNull(selectedAnimationKeyframe)
+   ?:if(c.animationKeyframes.isNotEmpty())animationAt(c.animationKeyframes,position,c) else null
+  player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale,sample))
+  if(player.currentMediaItem!=null)player.seekTo(position)
  }
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
