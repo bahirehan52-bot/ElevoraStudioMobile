@@ -208,6 +208,37 @@ private fun EditorScreen(){
         Row(verticalAlignment=Alignment.CenterVertically){Text("Rotation  ${clip.rotation}°",color=Color.White,modifier=Modifier.weight(1f),fontSize=11.sp);IconButton(onClick={update(clip.copy(rotation=(clip.rotation+270)%360))}){Icon(Icons.Default.RotateLeft,null,tint=mint)};IconButton(onClick={update(clip.copy(rotation=(clip.rotation+90)%360))}){Icon(Icons.Default.RotateRight,null,tint=mint)}}
        }else Text("Select a clip first.",color=muted)
       }
+      "Keyframes"->{
+       if(clip!=null){
+        val clipLength=(clip.end-clip.start).coerceAtLeast(1L)
+        val playhead=player.currentPosition.coerceIn(0L,clipLength)
+        Text("SPEED KEYFRAMES",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
+        Text("Playhead: ${tc(playhead)} • ${clip.speedKeyframes.size} keyframes",color=muted,fontSize=10.sp)
+        Text("Current speed: ${String.format(Locale.US,"%.2f",speedAt(clip.speedKeyframes,playhead,clip.speed))}x",color=Color.White,fontSize=12.sp)
+        Button(onClick={
+         val t=player.currentPosition.coerceIn(0L,clipLength)
+         val value=speedAt(clip.speedKeyframes,t,clip.speed)
+         val updated=(clip.speedKeyframes.filterNot{kotlin.math.abs(it.timeMs-t)<80L}+SpeedKeyframe(t,value)).sortedBy{it.timeMs}
+         update(clip.copy(speedKeyframes=updated));selectedKeyframe=updated.indexOfFirst{it.timeMs==t};status="Speed keyframe added at ${tc(t)}."
+        },modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Text("Add keyframe at playhead")}
+        if(clip.speedKeyframes.isNotEmpty()){
+         Text("Select a keyframe to edit its speed",color=muted,fontSize=10.sp)
+         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+          clip.speedKeyframes.forEachIndexed{idx,k->FilterChip(selected=selectedKeyframe==idx,onClick={selectedKeyframe=idx},label={Text("${tc(k.timeMs)} • ${k.speed}x")})}
+         }
+         val kf=clip.speedKeyframes.getOrNull(selectedKeyframe)
+         if(kf!=null){
+          Text("Speed at ${tc(kf.timeMs)}: ${String.format(Locale.US,"%.2f",kf.speed)}x",color=Color.White,fontSize=11.sp)
+          Slider(value=kf.speed,onValueChange={v->val changed=clip.speedKeyframes.toMutableList();changed[selectedKeyframe]=kf.copy(speed=v);update(clip.copy(speedKeyframes=changed));player.setPlaybackSpeed(speedAt(changed,player.currentPosition,clip.speed))},valueRange=.25f..3f)
+          Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
+           OutlinedButton(onClick={val changed=clip.speedKeyframes.toMutableList();changed.removeAt(selectedKeyframe);update(clip.copy(speedKeyframes=changed));selectedKeyframe=-1},modifier=Modifier.weight(1f)){Icon(Icons.Default.Delete,null);Text("Delete")}
+           OutlinedButton(onClick={player.seekTo(kf.timeMs);status="Moved playhead to keyframe."},modifier=Modifier.weight(1f)){Icon(Icons.Default.LocationOn,null);Text("Go to")}
+          }
+         }
+         Text("Speed interpolates between keyframes and is included in MP4 export.",color=muted,fontSize=10.sp)
+        }else Text("Play the clip, pause where speed should change, then add a keyframe. Add at least two for a speed ramp.",color=muted,fontSize=11.sp)
+       }else Text("Select a clip first.",color=muted)
+      }
       "Text"->{
        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("TEXT OVERLAY",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.weight(1f));Text("Position and size",color=muted,fontSize=9.sp)}
        OutlinedTextField(overlayText,{overlayText=it},placeholder={Text("Type title or caption")},modifier=Modifier.fillMaxWidth().heightIn(max=54.dp),singleLine=true)
