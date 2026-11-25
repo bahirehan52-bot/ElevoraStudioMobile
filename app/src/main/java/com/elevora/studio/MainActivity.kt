@@ -125,6 +125,13 @@ private fun EditorScreen(){
  LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
  val clip=clips.getOrNull(selected)
  LaunchedEffect(clip?.brightness,clip?.contrast,clip?.look,clip?.rotation,timelinePreview,selected){val current=clips.getOrNull(selected);if(current!=null)player.setVideoEffects(clipEffects(current,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale))}
+ LaunchedEffect(selected,clip?.speedKeyframes,timelinePreview){
+  while(true){
+   val current=clips.getOrNull(selected)
+   if(current!=null&&player.isPlaying)player.setPlaybackSpeed(speedAt(current.speedKeyframes,player.currentPosition,current.speed))
+   delay(60)
+  }
+ }
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
@@ -269,7 +276,13 @@ private fun EditorScreen(){
         val items=clips.map{c->
          val media=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()
          val effects=clipEffects(c,overlayText,textX,textY,textScale)
-         val sp=object:SpeedProvider{override fun getSpeed(timeUs:Long)=c.speed;override fun getNextSpeedChangeTimeUs(timeUs:Long)=androidx.media3.common.C.TIME_UNSET}
+         val sp=object:SpeedProvider{
+          override fun getSpeed(timeUs:Long)=speedAt(c.speedKeyframes,timeUs/1000L,c.speed)
+          override fun getNextSpeedChangeTimeUs(timeUs:Long):Long{
+           val next=c.speedKeyframes.firstOrNull{it.timeMs*1000L>timeUs}
+           return next?.timeMs?.times(1000L)?:androidx.media3.common.C.TIME_UNSET
+          }
+         }
          EditedMediaItem.Builder(media).setSpeed(sp).setEffects(Effects(emptyList(),effects)).build()
         }
         val videoSeq=EditedMediaItemSequence.withAudioAndVideoFrom(items)
@@ -317,3 +330,15 @@ private fun clipEffects(c: EditClip, text: String, textX: Float = 0f, textY: Flo
 }
 
 private fun tc(ms:Long):String{val s=(ms/1000).coerceAtLeast(0);return String.format(Locale.US,"%02d:%02d",s/60,s%60)}
+
+private fun speedAt(keyframes:List<SpeedKeyframe>,timeMs:Long,base:Float):Float{
+ if(keyframes.isEmpty())return base
+ val sorted=keyframes.sortedBy{it.timeMs}
+ val before=sorted.lastOrNull{it.timeMs<=timeMs}
+ val after=sorted.firstOrNull{it.timeMs>timeMs}
+ if(before==null)return sorted.first().speed
+ if(after==null)return before.speed
+ val span=(after.timeMs-before.timeMs).coerceAtLeast(1L)
+ val fraction=((timeMs-before.timeMs).toFloat()/span).coerceIn(0f,1f)
+ return (before.speed+(after.speed-before.speed)*fraction).coerceIn(.25f,3f)
+}
