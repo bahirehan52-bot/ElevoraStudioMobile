@@ -424,7 +424,7 @@ private fun EditorScreen(){
   }
  }
 }
-private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.uri?:"empty"
+private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.let{timelineClipId(it)}?:"empty"
 private fun timelineClipId(c:EditClip):String="${c.uri}#${c.start}:${c.end}"
 
 @OptIn(UnstableApi::class)
