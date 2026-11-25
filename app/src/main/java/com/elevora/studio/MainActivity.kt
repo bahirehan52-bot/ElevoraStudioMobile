@@ -20,6 +20,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.roundToInt
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.consume
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.Icons
@@ -164,7 +167,12 @@ private fun EditorScreen(){
        }
        Row(Modifier.fillMaxWidth().weight(1f).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){
         clips.forEachIndexed{index,c->
-         Surface(color=if(index==selected)Color(0xFF24534F)else Color(0xFF243344),shape=RoundedCornerShape(9.dp),modifier=Modifier.width(132.dp).border(1.dp,if(index==selected)mint else Color(0xFF405266),RoundedCornerShape(9.dp)),onClick={timelinePreview=false;selected=index}){
+         var dragDelta by remember(index,clips.size){mutableFloatStateOf(0f)}
+         Surface(color=if(index==selected)Color(0xFF24534F)else Color(0xFF243344),shape=RoundedCornerShape(9.dp),modifier=Modifier.width(132.dp).pointerInput(index,clips.size){detectDragGesturesAfterLongPress(onDragStart={dragDelta=0f},onDragEnd={
+          val shift=(dragDelta/140f).roundToInt()
+          val target=(index+shift).coerceIn(0,clips.lastIndex)
+          if(target!=index&&index in clips.indices){val oldSelected=selected;val moved=clips.removeAt(index);clips.add(target,moved);selected=when{oldSelected==index->target;index<target&&oldSelected in (index+1)..target->oldSelected-1;target<index&&oldSelected in target until index->oldSelected+1;else->oldSelected};status="Clip moved to position ${target+1}."}
+         },onDragCancel={dragDelta=0f},onDrag={change,amount->dragDelta+=amount.x;change.consume()})}.border(1.dp,if(index==selected)mint else Color(0xFF405266),RoundedCornerShape(9.dp)),onClick={timelinePreview=false;selected=index}){
           Column(Modifier.padding(9.dp)){
            Text("CLIP ${index+1}",color=mint,fontSize=10.sp,fontWeight=FontWeight.Bold)
            Text(c.name,color=Color.White,maxLines=1,fontSize=11.sp)
