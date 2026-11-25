@@ -23,7 +23,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.roundToInt
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.consume
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
