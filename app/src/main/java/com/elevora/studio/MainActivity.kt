@@ -93,6 +93,7 @@ private fun EditorScreen(){
  var timelinePreview by remember{ mutableStateOf(false) }
  var lookMenu by remember{ mutableStateOf(false) }
  var selectedKeyframe by remember{mutableIntStateOf(-1)}
+ var selectedAnimationKeyframe by remember{mutableIntStateOf(-1)}
  val player= remember{ExoPlayer.Builder(context).build()}
  DisposableEffect(Unit){onDispose{player.release()}}
  fun duration(uri:Uri):Long{val r=MediaMetadataRetriever();return try{r.setDataSource(context,uri);r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?:0L}finally{runCatching{r.release()}}}
@@ -125,7 +126,23 @@ private fun EditorScreen(){
  }
  LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
  val clip=clips.getOrNull(selected)
- LaunchedEffect(clip?.brightness,clip?.contrast,clip?.look,clip?.rotation,timelinePreview,selected){val current=clips.getOrNull(selected);if(current!=null)player.setVideoEffects(clipEffects(current,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale))}
+ LaunchedEffect(selected,clip?.animationKeyframes,timelinePreview){
+  var lastSignature=""
+  while(true){
+   val current=clips.getOrNull(selected)
+   if(current!=null&&player.currentMediaItem!=null){
+    val frame=animationAt(current.animationKeyframes,player.currentPosition,current)
+    val signature=listOf(frame.zoom,frame.rotation,frame.brightness,frame.contrast).joinToString("|"){String.format(Locale.US,"%.2f",it)}
+    if(current.animationKeyframes.isNotEmpty()&&signature!=lastSignature){
+     val wasPlaying=player.playWhenReady
+     player.setVideoEffects(clipEffects(current,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale,frame))
+     if(wasPlaying)player.playWhenReady=true
+     lastSignature=signature
+    }
+   }
+   delay(100)
+  }
+ }
  LaunchedEffect(selected,clip?.speedKeyframes,timelinePreview){
   while(true){
    val current=clips.getOrNull(selected)
@@ -134,6 +151,11 @@ private fun EditorScreen(){
   }
  }
  fun update(c:EditClip){if(selected in clips.indices)clips[selected]=c}
+ fun applyPreviewEffects(c:EditClip,frame:AnimationKeyframe?=null){
+  val wasPlaying=player.playWhenReady
+  player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale,frame))
+  if(wasPlaying)player.playWhenReady=true
+ }
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
   Column(Modifier.fillMaxSize().background(bg).statusBarsPadding().navigationBarsPadding().padding(horizontal=10.dp, vertical=6.dp)){
@@ -220,7 +242,39 @@ private fun EditorScreen(){
        if(clip!=null){
         val clipLength=(clip.end-clip.start).coerceAtLeast(1L)
         val playhead=player.currentPosition.coerceIn(0L,clipLength)
-        Text("SPEED KEYFRAMES",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
+        Text("ANIMATION & SPEED KEYFRAMES",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
+        Text("Zoom, rotation, brightness aur contrast ko animate karo.",color=muted,fontSize=10.sp)
+        Text("Animation keyframes: ${clip.animationKeyframes.size}",color=Color.White,fontSize=11.sp)
+        Button(onClick={
+         val t=player.currentPosition.coerceIn(0L,clipLength)
+         val current=animationAt(clip.animationKeyframes,t,clip)
+         val updated=(clip.animationKeyframes.filterNot{kotlin.math.abs(it.timeMs-t)<80L}+current.copy(timeMs=t)).sortedBy{it.timeMs}
+         update(clip.copy(animationKeyframes=updated));selectedAnimationKeyframe=updated.indexOfFirst{it.timeMs==t}
+         status="Animation keyframe added at ${tc(t)}."
+        },modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Text("Add animation keyframe at playhead")}
+        if(clip.animationKeyframes.isNotEmpty()){
+         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)){
+          clip.animationKeyframes.forEachIndexed{idx,k->FilterChip(selected=selectedAnimationKeyframe==idx,onClick={selectedAnimationKeyframe=idx},label={Text("${tc(k.timeMs)} • ${String.format(Locale.US,"%.1f",k.zoom)}x")})}
+         }
+         val anim=clip.animationKeyframes.getOrNull(selectedAnimationKeyframe)
+         if(anim!=null){
+          Text("Selected: ${tc(anim.timeMs)}",color=mint,fontSize=10.sp)
+          Text("Zoom ${String.format(Locale.US,"%.2f",anim.zoom)}x",color=Color.White,fontSize=10.sp)
+          Slider(value=anim.zoom,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(zoom=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=1f..3f)
+          Text("Rotation ${String.format(Locale.US,"%.0f",anim.rotation)}°",color=Color.White,fontSize=10.sp)
+          Slider(value=anim.rotation,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(rotation=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=-180f..180f)
+          Text("Brightness ${String.format(Locale.US,"%.2f",anim.brightness)}",color=Color.White,fontSize=10.sp)
+          Slider(value=anim.brightness,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(brightness=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=-1f..1f)
+          Text("Contrast ${String.format(Locale.US,"%.2f",anim.contrast)}",color=Color.White,fontSize=10.sp)
+          Slider(value=anim.contrast,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(contrast=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=-1f..1f)
+          Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+           OutlinedButton(onClick={player.seekTo(anim.timeMs);status="Playhead moved to animation keyframe."},modifier=Modifier.weight(1f)){Text("Go to")}
+           OutlinedButton(onClick={val changed=clip.animationKeyframes.toMutableList();changed.removeAt(selectedAnimationKeyframe);update(clip.copy(animationKeyframes=changed));selectedAnimationKeyframe=-1},modifier=Modifier.weight(1f)){Text("Delete")}
+          }
+         }
+        }
+        Divider(color=muted.copy(alpha=.3f))
+        Text("SPEED KEYFRAMES",color=mint,fontSize=11.sp,fontWeight=FontWeight.Bold)
         Text("Playhead: ${tc(playhead)} • ${clip.speedKeyframes.size} keyframes",color=muted,fontSize=10.sp)
         Text("Current speed: ${String.format(Locale.US,"%.2f",speedAt(clip.speedKeyframes,playhead,clip.speed))}x",color=Color.White,fontSize=12.sp)
         Button(onClick={
@@ -310,9 +364,9 @@ private fun EditorScreen(){
 private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.uri?:"empty"
 
 @OptIn(UnstableApi::class)
-private fun clipEffects(c: EditClip, text: String, textX: Float = 0f, textY: Float = 0f, textScale: Float = 1f): List<Effect> {
+private fun clipEffects(c: EditClip, text: String, textX: Float = 0f, textY: Float = 0f, textScale: Float = 1f, animation:AnimationKeyframe?=null): List<Effect> {
  val effects = mutableListOf<Effect>()
- effects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(c.rotation.toFloat()).setScale(c.cropZoom,c.cropZoom).build())
+ effects.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(animation?.rotation?:c.rotation.toFloat()).setScale(animation?.zoom?:c.cropZoom,animation?.zoom?:c.cropZoom).build())
  val rgb = when(c.look) {
   "Warm" -> Triple(1.12f,1.02f,.88f)
   "Cool" -> Triple(.88f,1.02f,1.12f)
@@ -321,8 +375,10 @@ private fun clipEffects(c: EditClip, text: String, textX: Float = 0f, textY: Flo
   else -> Triple(1f,1f,1f)
  }
  if(c.look != "Original") effects.add(RgbAdjustment.Builder().setRedScale(rgb.first).setGreenScale(rgb.second).setBlueScale(rgb.third).build())
- if(c.brightness != 0f) effects.add(Brightness(c.brightness))
- if(c.contrast != 0f) effects.add(Contrast(c.contrast))
+ val brightness=animation?.brightness?:c.brightness
+ if(brightness != 0f) effects.add(Brightness(brightness))
+ val contrast=animation?.contrast?:c.contrast
+ if(contrast != 0f) effects.add(Contrast(contrast))
  if(text.isNotBlank()) {
   val settings = StaticOverlaySettings.Builder().setBackgroundFrameAnchor(textX, textY).setOverlayFrameAnchor(0f, 0f).setScale(textScale, textScale).build()
   effects.add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(SpannableString(text), settings))))
@@ -342,4 +398,17 @@ private fun speedAt(keyframes:List<SpeedKeyframe>,timeMs:Long,base:Float):Float{
  val span=(after.timeMs-before.timeMs).coerceAtLeast(1L)
  val fraction=((timeMs-before.timeMs).toFloat()/span).coerceIn(0f,1f)
  return (before.speed+(after.speed-before.speed)*fraction).coerceIn(.25f,3f)
+}
+
+private fun animationAt(keyframes:List<AnimationKeyframe>,timeMs:Long,clip:EditClip):AnimationKeyframe{
+ if(keyframes.isEmpty())return AnimationKeyframe(timeMs,clip.cropZoom,clip.rotation.toFloat(),clip.brightness,clip.contrast)
+ val sorted=keyframes.sortedBy{it.timeMs}
+ val before=sorted.lastOrNull{it.timeMs<=timeMs}
+ val after=sorted.firstOrNull{it.timeMs>timeMs}
+ if(before==null)return sorted.first().copy(timeMs=timeMs)
+ if(after==null)return before.copy(timeMs=timeMs)
+ val span=(after.timeMs-before.timeMs).coerceAtLeast(1L)
+ val f=((timeMs-before.timeMs).toFloat()/span).coerceIn(0f,1f)
+ fun mix(a:Float,b:Float)=(a+(b-a)*f)
+ return AnimationKeyframe(timeMs,mix(before.zoom,after.zoom),mix(before.rotation,after.rotation),mix(before.brightness,after.brightness),mix(before.contrast,after.contrast))
 }
