@@ -92,6 +92,7 @@ private fun EditorScreen(){
  var activeTab by remember{ mutableStateOf("Media") }
  var exporting by remember{ mutableStateOf(false) }
  var timelinePreview by remember{ mutableStateOf(false) }
+ var previewPosition by remember{mutableLongStateOf(0L)}
  var lookMenu by remember{ mutableStateOf(false) }
  var selectedKeyframe by remember{mutableIntStateOf(-1)}
  var selectedAnimationKeyframe by remember{mutableIntStateOf(-1)}
