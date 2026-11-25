@@ -161,8 +161,8 @@ private fun EditorScreen(){
     if(clip!=null)AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true}},modifier=Modifier.fillMaxSize()) else Text("Import video clips",color=muted)
    }
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-    OutlinedButton(onClick={addVideos.launch(arrayOf("video/*"))},modifier=Modifier.weight(1f)){Icon(Icons.Default.VideoLibrary,null);Text(" Import")}
-    OutlinedButton(enabled=clip!=null,onClick={if(player.isPlaying)player.pause()else player.play()},modifier=Modifier.weight(1f)){Icon(if(player.isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow,null);Text(" Play")}
+    OutlinedButton(onClick={addVideos.launch(arrayOf("video/*"))},modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=6.dp,vertical=8.dp)){Icon(Icons.Default.VideoLibrary,null);Spacer(Modifier.width(4.dp));Text("Import",fontSize=12.sp,maxLines=1)}
+    OutlinedButton(enabled=clip!=null,onClick={if(player.isPlaying)player.pause()else player.play()},modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=6.dp,vertical=8.dp)){Icon(if(player.isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow,null);Spacer(Modifier.width(4.dp));Text("Play",fontSize=12.sp,maxLines=1)}
     OutlinedButton(enabled=clips.isNotEmpty(),onClick={
      val items=clips.mapIndexed{index,c->MediaItem.Builder().setMediaId(index.toString()).setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
      timelinePreview=true;player.setMediaItems(items,true);player.prepare()
@@ -235,63 +235,88 @@ private fun EditorScreen(){
        if(clip!=null){
         val clipLength=(clip.end-clip.start).coerceAtLeast(1L)
         val playhead=player.currentPosition.coerceIn(0L,clipLength)
-        Text("ANIMATION & SPEED KEYFRAMES",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
-        Text("Zoom, rotation, brightness aur contrast ko animate karo.",color=muted,fontSize=10.sp)
-        Text("Animation keyframes: ${clip.animationKeyframes.size}",color=Color.White,fontSize=11.sp)
-        Button(onClick={
-         val t=player.currentPosition.coerceIn(0L,clipLength)
-         val current=animationAt(clip.animationKeyframes,t,clip)
-         val updated=(clip.animationKeyframes.filterNot{kotlin.math.abs(it.timeMs-t)<80L}+current.copy(timeMs=t)).sortedBy{it.timeMs}
-         update(clip.copy(animationKeyframes=updated));selectedAnimationKeyframe=updated.indexOfFirst{it.timeMs==t}
-         status="Animation keyframe added at ${tc(t)}."
-        },modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Text("Add animation keyframe at playhead")}
-        if(clip.animationKeyframes.isNotEmpty()){
-         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)){
-          clip.animationKeyframes.forEachIndexed{idx,k->FilterChip(selected=selectedAnimationKeyframe==idx,onClick={selectedAnimationKeyframe=idx},label={Text("${tc(k.timeMs)} • ${String.format(Locale.US,"%.1f",k.zoom)}x")})}
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
+         Text("ANIMATION KEYFRAMES",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
+         Text("Har animation keyframe apni alag Zoom, Rotation, Brightness aur Contrast values rakhta hai.",color=muted,fontSize=10.sp)
+         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
+          Text("ANIMATION • ${clip.animationKeyframes.size} points",color=Color.White,fontSize=11.sp,fontWeight=FontWeight.SemiBold)
+          Text("Playhead ${tc(playhead)}",color=muted,fontSize=10.sp)
          }
-         val anim=clip.animationKeyframes.getOrNull(selectedAnimationKeyframe)
-         if(anim!=null){
-          Text("Selected: ${tc(anim.timeMs)}",color=mint,fontSize=10.sp)
-          Text("Zoom ${String.format(Locale.US,"%.2f",anim.zoom)}x",color=Color.White,fontSize=10.sp)
-          Slider(value=anim.zoom,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(zoom=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=1f..3f)
-          Text("Rotation ${String.format(Locale.US,"%.0f",anim.rotation)}°",color=Color.White,fontSize=10.sp)
-          Slider(value=anim.rotation,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(rotation=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=-180f..180f)
-          Text("Brightness ${String.format(Locale.US,"%.2f",anim.brightness)}",color=Color.White,fontSize=10.sp)
-          Slider(value=anim.brightness,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(brightness=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=-1f..1f)
-          Text("Contrast ${String.format(Locale.US,"%.2f",anim.contrast)}",color=Color.White,fontSize=10.sp)
-          Slider(value=anim.contrast,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(contrast=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=-1f..1f)
-          Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-           OutlinedButton(onClick={player.seekTo(anim.timeMs);status="Playhead moved to animation keyframe."},modifier=Modifier.weight(1f)){Text("Go to")}
-           OutlinedButton(onClick={val changed=clip.animationKeyframes.toMutableList();changed.removeAt(selectedAnimationKeyframe);update(clip.copy(animationKeyframes=changed));selectedAnimationKeyframe=-1},modifier=Modifier.weight(1f)){Text("Delete")}
+         Button(onClick={
+          val t=player.currentPosition.coerceIn(0L,clipLength)
+          val current=animationAt(clip.animationKeyframes,t,clip)
+          val updated=(clip.animationKeyframes.filterNot{kotlin.math.abs(it.timeMs-t)<80L}+current.copy(timeMs=t)).sortedBy{it.timeMs}
+          update(clip.copy(animationKeyframes=updated));selectedAnimationKeyframe=updated.indexOfFirst{it.timeMs==t}
+          status="Animation keyframe added at ${tc(t)}."
+         },modifier=Modifier.fillMaxWidth().heightIn(min=46.dp),contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),shape=RoundedCornerShape(12.dp)){
+          Icon(Icons.Default.Add,null);Spacer(Modifier.width(6.dp));Text("Add animation keyframe")
+         }
+         if(clip.animationKeyframes.isNotEmpty()){
+          Text("SELECT A KEYFRAME • Tap to jump to its time and preview its values",color=muted,fontSize=10.sp)
+          Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(7.dp)){
+           clip.animationKeyframes.forEachIndexed{idx,k->
+            FilterChip(selected=selectedAnimationKeyframe==idx,onClick={
+             selectedAnimationKeyframe=idx
+             if(player.isPlaying)player.pause()
+             player.seekTo(k.timeMs)
+             applyPreviewEffects(clip,k)
+             status="Selected animation keyframe at ${tc(k.timeMs)}."
+            },label={Column(horizontalAlignment=Alignment.Start){
+             Text("KF ${idx+1} • ${tc(k.timeMs)}",fontSize=11.sp,fontWeight=FontWeight.Bold)
+             Text("Zoom ${String.format(Locale.US,"%.2f",k.zoom)}x",fontSize=10.sp)
+             Text("Rotate ${String.format(Locale.US,"%.0f",k.rotation)}°",fontSize=10.sp)
+            }})
+           }
           }
-         }
+          val anim=clip.animationKeyframes.getOrNull(selectedAnimationKeyframe)
+          if(anim!=null){
+           Surface(color=Color(0xFF203444),shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth().border(1.dp,mint.copy(alpha=.55f),RoundedCornerShape(10.dp))){
+            Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
+             Text("EDITING KF ${selectedAnimationKeyframe+1}",color=mint,fontSize=11.sp,fontWeight=FontWeight.Bold)
+             Text("Time: ${tc(anim.timeMs)} • These values belong ONLY to this keyframe.",color=muted,fontSize=10.sp)
+             Text("ZOOM  ${String.format(Locale.US,"%.2f",anim.zoom)}x",color=Color.White,fontSize=11.sp)
+             Slider(value=anim.zoom,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(zoom=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it,clips[selected].animationKeyframes.getOrNull(selectedAnimationKeyframe))}},valueRange=1f..3f)
+             Text("ROTATION  ${String.format(Locale.US,"%.0f",anim.rotation)}°",color=Color.White,fontSize=11.sp)
+             Slider(value=anim.rotation,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(rotation=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it,clips[selected].animationKeyframes.getOrNull(selectedAnimationKeyframe))}},valueRange=-180f..180f)
+             Text("BRIGHTNESS  ${String.format(Locale.US,"%.2f",anim.brightness)}",color=Color.White,fontSize=11.sp)
+             Slider(value=anim.brightness,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(brightness=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it,clips[selected].animationKeyframes.getOrNull(selectedAnimationKeyframe))}},valueRange=-1f..1f)
+             Text("CONTRAST  ${String.format(Locale.US,"%.2f",anim.contrast)}",color=Color.White,fontSize=11.sp)
+             Slider(value=anim.contrast,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(contrast=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it,clips[selected].animationKeyframes.getOrNull(selectedAnimationKeyframe))}},valueRange=-1f..1f)
+             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+              OutlinedButton(onClick={if(player.isPlaying)player.pause();player.seekTo(anim.timeMs);applyPreviewEffects(clip,anim);status="Previewing KF ${selectedAnimationKeyframe+1}."},modifier=Modifier.weight(1f)){Icon(Icons.Default.Visibility,null);Text("Preview frame")}
+              OutlinedButton(onClick={val changed=clip.animationKeyframes.toMutableList();changed.removeAt(selectedAnimationKeyframe);update(clip.copy(animationKeyframes=changed));selectedAnimationKeyframe=-1;status="Animation keyframe deleted."},modifier=Modifier.weight(1f)){Icon(Icons.Default.Delete,null);Text("Delete")}
+             }
+            }
+           }
+          }else Text("Tap a keyframe above to edit its properties.",color=muted,fontSize=10.sp)
+         }else Text("No animation keyframes yet. Move the playhead, add a keyframe, change its values, then repeat at another time.",color=muted,fontSize=11.sp)
+         Divider(color=muted.copy(alpha=.3f),thickness=1.dp)
+         Text("SPEED KEYFRAMES",color=mint,fontSize=12.sp,fontWeight=FontWeight.Bold)
+         Text("Playhead ${tc(playhead)} • ${clip.speedKeyframes.size} speed points",color=muted,fontSize=10.sp)
+         Text("Current speed: ${String.format(Locale.US,"%.2f",speedAt(clip.speedKeyframes,playhead,clip.speed))}x",color=Color.White,fontSize=12.sp)
+         Button(onClick={
+          val t=player.currentPosition.coerceIn(0L,clipLength)
+          val value=speedAt(clip.speedKeyframes,t,clip.speed)
+          val updated=(clip.speedKeyframes.filterNot{kotlin.math.abs(it.timeMs-t)<80L}+SpeedKeyframe(t,value)).sortedBy{it.timeMs}
+          update(clip.copy(speedKeyframes=updated));selectedKeyframe=updated.indexOfFirst{it.timeMs==t};status="Speed keyframe added at ${tc(t)}."
+         },modifier=Modifier.fillMaxWidth().heightIn(min=44.dp),contentPadding=PaddingValues(horizontal=10.dp,vertical=7.dp)){Icon(Icons.Default.Add,null);Text("Add speed keyframe")}
+         if(clip.speedKeyframes.isNotEmpty()){
+          Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+           clip.speedKeyframes.forEachIndexed{idx,k->FilterChip(selected=selectedKeyframe==idx,onClick={selectedKeyframe=idx;if(player.isPlaying)player.pause();player.seekTo(k.timeMs)},label={Text("KF ${idx+1} • ${tc(k.timeMs)} • ${String.format(Locale.US,"%.2f",k.speed)}x")})}
+          }
+          val kf=clip.speedKeyframes.getOrNull(selectedKeyframe)
+          if(kf!=null){
+           Text("EDITING SPEED KF ${selectedKeyframe+1} • ${tc(kf.timeMs)}",color=mint,fontSize=11.sp,fontWeight=FontWeight.Bold)
+           Text("Speed ${String.format(Locale.US,"%.2f",kf.speed)}x",color=Color.White,fontSize=11.sp)
+           Slider(value=kf.speed,onValueChange={v->val changed=clip.speedKeyframes.toMutableList();changed[selectedKeyframe]=kf.copy(speed=v);update(clip.copy(speedKeyframes=changed));player.setPlaybackSpeed(speedAt(changed,player.currentPosition,clip.speed))},valueRange=.25f..3f)
+           Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+            OutlinedButton(onClick={if(player.isPlaying)player.pause();player.seekTo(kf.timeMs);status="Playhead moved to speed keyframe."},modifier=Modifier.weight(1f)){Icon(Icons.Default.LocationOn,null);Text("Go to")}
+            OutlinedButton(onClick={val changed=clip.speedKeyframes.toMutableList();changed.removeAt(selectedKeyframe);update(clip.copy(speedKeyframes=changed));selectedKeyframe=-1;status="Speed keyframe deleted."},modifier=Modifier.weight(1f)){Icon(Icons.Default.Delete,null);Text("Delete")}
+           }
+          }
+         }else Text("Add speed keyframes at different times to create a speed ramp.",color=muted,fontSize=10.sp)
+         Text("Export uses the animation keyframes and interpolates between them. Preview applies the selected frame while paused.",color=muted,fontSize=10.sp)
         }
-        Divider(color=muted.copy(alpha=.3f))
-        Text("SPEED KEYFRAMES",color=mint,fontSize=11.sp,fontWeight=FontWeight.Bold)
-        Text("Playhead: ${tc(playhead)} • ${clip.speedKeyframes.size} keyframes",color=muted,fontSize=10.sp)
-        Text("Current speed: ${String.format(Locale.US,"%.2f",speedAt(clip.speedKeyframes,playhead,clip.speed))}x",color=Color.White,fontSize=12.sp)
-        Button(onClick={
-         val t=player.currentPosition.coerceIn(0L,clipLength)
-         val value=speedAt(clip.speedKeyframes,t,clip.speed)
-         val updated=(clip.speedKeyframes.filterNot{kotlin.math.abs(it.timeMs-t)<80L}+SpeedKeyframe(t,value)).sortedBy{it.timeMs}
-         update(clip.copy(speedKeyframes=updated));selectedKeyframe=updated.indexOfFirst{it.timeMs==t};status="Speed keyframe added at ${tc(t)}."
-        },modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Text("Add keyframe at playhead")}
-        if(clip.speedKeyframes.isNotEmpty()){
-         Text("Select a keyframe to edit its speed",color=muted,fontSize=10.sp)
-         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-          clip.speedKeyframes.forEachIndexed{idx,k->FilterChip(selected=selectedKeyframe==idx,onClick={selectedKeyframe=idx},label={Text("${tc(k.timeMs)} • ${k.speed}x")})}
-         }
-         val kf=clip.speedKeyframes.getOrNull(selectedKeyframe)
-         if(kf!=null){
-          Text("Speed at ${tc(kf.timeMs)}: ${String.format(Locale.US,"%.2f",kf.speed)}x",color=Color.White,fontSize=11.sp)
-          Slider(value=kf.speed,onValueChange={v->val changed=clip.speedKeyframes.toMutableList();changed[selectedKeyframe]=kf.copy(speed=v);update(clip.copy(speedKeyframes=changed));player.setPlaybackSpeed(speedAt(changed,player.currentPosition,clip.speed))},valueRange=.25f..3f)
-          Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
-           OutlinedButton(onClick={val changed=clip.speedKeyframes.toMutableList();changed.removeAt(selectedKeyframe);update(clip.copy(speedKeyframes=changed));selectedKeyframe=-1},modifier=Modifier.weight(1f)){Icon(Icons.Default.Delete,null);Text("Delete")}
-           OutlinedButton(onClick={player.seekTo(kf.timeMs);status="Moved playhead to keyframe."},modifier=Modifier.weight(1f)){Icon(Icons.Default.LocationOn,null);Text("Go to")}
-          }
-         }
-         Text("Speed interpolates between keyframes and is included in MP4 export.",color=muted,fontSize=10.sp)
-        }else Text("Play the clip, pause where speed should change, then add a keyframe. Add at least two for a speed ramp.",color=muted,fontSize=11.sp)
        }else Text("Select a clip first.",color=muted)
       }
       "Text"->{
