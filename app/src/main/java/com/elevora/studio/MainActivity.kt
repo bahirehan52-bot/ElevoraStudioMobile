@@ -126,23 +126,9 @@ private fun EditorScreen(){
  }
  LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
  val clip=clips.getOrNull(selected)
- LaunchedEffect(selected,clip?.animationKeyframes,timelinePreview){
-  var lastSignature=""
-  while(true){
-   val current=clips.getOrNull(selected)
-   if(current!=null&&player.currentMediaItem!=null){
-    val frame=animationAt(current.animationKeyframes,player.currentPosition,current)
-    val signature=listOf(frame.zoom,frame.rotation,frame.brightness,frame.contrast).joinToString("|"){String.format(Locale.US,"%.2f",it)}
-    if(current.animationKeyframes.isNotEmpty()&&signature!=lastSignature){
-     val wasPlaying=player.playWhenReady
-     player.setVideoEffects(clipEffects(current,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale,frame))
-     if(wasPlaying)player.playWhenReady=true
-     lastSignature=signature
-    }
-   }
-   delay(50)
-  }
- }
+ // Do not rebuild the video effect graph on a timer. Media3 may recreate the renderer each time,
+ // which can stall or black out playback. Animation is sampled during export; preview effects
+ // are applied explicitly after the user finishes editing a keyframe.
  LaunchedEffect(selected,clip?.speedKeyframes,timelinePreview){
   while(true){
    val current=clips.getOrNull(selected)
@@ -328,9 +314,12 @@ private fun EditorScreen(){
        Button(enabled=clips.isNotEmpty()&&!exporting,onClick={
         exporting=true;status="Preparing MP4 export…"
         val out=File(context.cacheDir,"elevora_${System.currentTimeMillis()}.mp4")
+        // Bound Transformer item count: 100ms segments created hundreds/thousands of items.
+        val animatedDuration=clips.filter{it.animationKeyframes.isNotEmpty()}.sumOf{(it.end-it.start).coerceAtLeast(1L)}
+        val animationStepMs=if(animatedDuration<=0L)1000L else maxOf(1000L,(animatedDuration+119L)/120L)
         val items=clips.flatMap{c->
          val clipLength=(c.end-c.start).coerceAtLeast(1L)
-         val segmentMs=if(c.animationKeyframes.isEmpty())clipLength else 100L
+         val segmentMs=if(c.animationKeyframes.isEmpty())clipLength else animationStepMs
          val count=((clipLength+segmentMs-1L)/segmentMs).toInt().coerceAtLeast(1)
          (0 until count).map{segmentIndex->
           val offset=segmentIndex*segmentMs
