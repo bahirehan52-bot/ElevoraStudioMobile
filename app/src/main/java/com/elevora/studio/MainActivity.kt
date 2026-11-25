@@ -228,14 +228,14 @@ private fun EditorScreen(){
         Text("TRIM • ${tc(clip.start)} – ${tc(clip.end)}",color=mint,fontSize=11.sp,fontWeight=FontWeight.Bold)
         RangeSlider(value=clip.start.toFloat()..clip.end.toFloat(),onValueChange={r->val st=r.start.toLong().coerceIn(0,clip.duration-1);val en=r.endInclusive.toLong().coerceIn(st+1,clip.duration);update(clip.copy(start=st,end=en))},valueRange=0f..clip.duration.toFloat().coerceAtLeast(1f),onValueChangeFinished={val latest=clips.getOrNull(selected);if(latest!=null){val resume=player.playWhenReady;val item=MediaItem.Builder().setUri(Uri.parse(latest.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(latest.start).setEndPositionMs(latest.end).build()).build();player.setMediaItem(item,true);player.setPlaybackSpeed(latest.speed);player.prepare();player.playWhenReady=resume}})
         Text("CROP ZOOM  ${String.format(Locale.US,"%.2f",clip.cropZoom)}x",color=Color.White,fontSize=11.sp)
-        Slider(value=clip.cropZoom,onValueChange={v->update(clip.copy(cropZoom=v));player.setVideoEffects(clipEffects(clip.copy(cropZoom=v),appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale))},valueRange=1f..3f)
+        Slider(value=clip.cropZoom,onValueChange={v->update(clip.copy(cropZoom=v))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=1f..3f)
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-         OutlinedButton(onClick={update(clip.copy(cropZoom=1f));player.setVideoEffects(clipEffects(clip.copy(cropZoom=1f),appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale))},modifier=Modifier.weight(1f)){Text("Reset crop")}
+         OutlinedButton(onClick={update(clip.copy(cropZoom=1f));clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},modifier=Modifier.weight(1f)){Text("Reset crop")}
          OutlinedButton(onClick={update(clip.copy(start=0,end=clip.duration,speed=1f,rotation=0,cropZoom=1f));status="Clip edits reset."},modifier=Modifier.weight(1f)){Text("Reset all")}
         }
         Text("Speed  ${String.format(Locale.US,"%.2f",clip.speed)}x",color=Color.White,fontSize=11.sp)
         Slider(value=clip.speed,onValueChange={update(clip.copy(speed=it));player.setPlaybackSpeed(it)},valueRange=.25f..3f)
-        Row(verticalAlignment=Alignment.CenterVertically){Text("Rotation  ${clip.rotation}°",color=Color.White,modifier=Modifier.weight(1f),fontSize=11.sp);IconButton(onClick={update(clip.copy(rotation=(clip.rotation+270)%360))}){Icon(Icons.Default.RotateLeft,null,tint=mint)};IconButton(onClick={update(clip.copy(rotation=(clip.rotation+90)%360))}){Icon(Icons.Default.RotateRight,null,tint=mint)}}
+        Row(verticalAlignment=Alignment.CenterVertically){Text("Rotation  ${clip.rotation}°",color=Color.White,modifier=Modifier.weight(1f),fontSize=11.sp);IconButton(onClick={update(clip.copy(rotation=(clip.rotation+270)%360));clips.getOrNull(selected)?.let{applyPreviewEffects(it)}}){Icon(Icons.Default.RotateLeft,null,tint=mint)};IconButton(onClick={update(clip.copy(rotation=(clip.rotation+90)%360));clips.getOrNull(selected)?.let{applyPreviewEffects(it)}}){Icon(Icons.Default.RotateRight,null,tint=mint)}}
        }else Text("Select a clip first.",color=muted)
       }
       "Keyframes"->{
@@ -317,9 +317,9 @@ private fun EditorScreen(){
       }
       "Effects"->{
        if(clip!=null){
-        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("BRIGHTNESS",color=Color.White,fontSize=10.sp,modifier=Modifier.width(82.dp));Slider(value=clip.brightness,onValueChange={update(clip.copy(brightness=it))},valueRange=-1f..1f,modifier=Modifier.weight(1f))}
-        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("CONTRAST",color=Color.White,fontSize=10.sp,modifier=Modifier.width(82.dp));Slider(value=clip.contrast,onValueChange={update(clip.copy(contrast=it))},valueRange=-1f..1f,modifier=Modifier.weight(1f))}
-        Row(verticalAlignment=Alignment.CenterVertically){Text("Look: ${clip.look}",color=Color.White,modifier=Modifier.weight(1f),fontSize=11.sp);Box{OutlinedButton(onClick={lookMenu=true}){Text("Choose")};DropdownMenu(expanded=lookMenu,onDismissRequest={lookMenu=false}){listOf("Original","Warm","Cool","Vintage","Mono").forEach{v->DropdownMenuItem(text={Text(v)},onClick={update(clip.copy(look=v));lookMenu=false})}}}}
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("BRIGHTNESS",color=Color.White,fontSize=10.sp,modifier=Modifier.width(82.dp));Slider(value=clip.brightness,onValueChange={update(clip.copy(brightness=it))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=-1f..1f,modifier=Modifier.weight(1f))}
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("CONTRAST",color=Color.White,fontSize=10.sp,modifier=Modifier.width(82.dp));Slider(value=clip.contrast,onValueChange={update(clip.copy(contrast=it))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it)}},valueRange=-1f..1f,modifier=Modifier.weight(1f))}
+        Row(verticalAlignment=Alignment.CenterVertically){Text("Look: ${clip.look}",color=Color.White,modifier=Modifier.weight(1f),fontSize=11.sp);Box{OutlinedButton(onClick={lookMenu=true}){Text("Choose")};DropdownMenu(expanded=lookMenu,onDismissRequest={lookMenu=false}){listOf("Original","Warm","Cool","Vintage","Mono").forEach{v->DropdownMenuItem(text={Text(v)},onClick={update(clip.copy(look=v));lookMenu=false;clips.getOrNull(selected)?.let{applyPreviewEffects(it)}})}}}}
        }else Text("Select a clip first.",color=muted)
       }
       "Export"->{
@@ -328,17 +328,25 @@ private fun EditorScreen(){
        Button(enabled=clips.isNotEmpty()&&!exporting,onClick={
         exporting=true;status="Preparing MP4 export…"
         val out=File(context.cacheDir,"elevora_${System.currentTimeMillis()}.mp4")
-        val items=clips.map{c->
-         val media=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()
-         val effects=clipEffects(c,overlayText,textX,textY,textScale)
-         val sp=object:SpeedProvider{
-          override fun getSpeed(timeUs:Long)=speedAt(c.speedKeyframes,timeUs/1000L,c.speed)
-          override fun getNextSpeedChangeTimeUs(timeUs:Long):Long{
-           val next=c.speedKeyframes.firstOrNull{it.timeMs*1000L>timeUs}
-           return next?.timeMs?.times(1000L)?:androidx.media3.common.C.TIME_UNSET
+        val items=clips.flatMap{c->
+         val clipLength=(c.end-c.start).coerceAtLeast(1L)
+         val segmentMs=if(c.animationKeyframes.isEmpty())clipLength else 250L
+         val count=((clipLength+segmentMs-1L)/segmentMs).toInt().coerceAtLeast(1)
+         (0 until count).map{segmentIndex->
+          val offset=segmentIndex*segmentMs
+          val length=minOf(segmentMs,clipLength-offset)
+          val animation=if(c.animationKeyframes.isEmpty())null else animationAt(c.animationKeyframes,offset+length/2,c)
+          val media=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start+offset).setEndPositionMs(c.start+offset+length).build()).build()
+          val effects=clipEffects(c,overlayText,textX,textY,textScale,animation)
+          val sp=object:SpeedProvider{
+           override fun getSpeed(timeUs:Long)=speedAt(c.speedKeyframes,offset+timeUs/1000L,c.speed)
+           override fun getNextSpeedChangeTimeUs(timeUs:Long):Long{
+            val next=c.speedKeyframes.firstOrNull{it.timeMs*1000L>offset*1000L+timeUs}
+            return next?.let{(it.timeMs-offset)*1000L}?:androidx.media3.common.C.TIME_UNSET
+           }
           }
+          EditedMediaItem.Builder(media).setSpeed(sp).setEffects(Effects(emptyList(),effects)).build()
          }
-         EditedMediaItem.Builder(media).setSpeed(sp).setEffects(Effects(emptyList(),effects)).build()
         }
         val videoSeq=EditedMediaItemSequence.withAudioAndVideoFrom(items)
         val composition=if(audioUri!=null){val music=EditedMediaItem.Builder(MediaItem.fromUri(audioUri!!)).setRemoveVideo(true).build();val audioSeq=EditedMediaItemSequence.withAudioFrom(listOf(music)).buildUpon().setIsLooping(true).build();MediaComposition.Builder(listOf(videoSeq,audioSeq)).build()}else MediaComposition.Builder(listOf(videoSeq)).build()
