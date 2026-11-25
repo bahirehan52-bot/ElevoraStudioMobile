@@ -29,6 +29,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -126,6 +127,7 @@ private fun EditorScreen(){
  }
  LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
  val clip=clips.getOrNull(selected)
+ LaunchedEffect(player,selected,timelinePreview){while(true){if(player.isPlaying)previewPosition=player.currentPosition;delay(33)}}
  // Do not rebuild the video effect graph on a timer. Media3 may recreate the renderer each time,
  // which can stall or black out playback. Animation is sampled during export; preview effects
  // are applied explicitly after the user finishes editing a keyframe.
@@ -146,7 +148,7 @@ private fun EditorScreen(){
   val position=player.currentPosition
   val sample=frame?:c.animationKeyframes.getOrNull(selectedAnimationKeyframe)
    ?:if(c.animationKeyframes.isNotEmpty())animationAt(c.animationKeyframes,position,c) else null
-  player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale,sample))
+  player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale,sample?.copy(zoom=c.cropZoom,rotation=c.rotation.toFloat())))
   if(player.currentMediaItem!=null)player.seekTo(position)
  }
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
@@ -158,7 +160,16 @@ private fun EditorScreen(){
    }
    OutlinedTextField(projectName,{projectName=it},label={Text("Project name")},modifier=Modifier.fillMaxWidth(),singleLine=true)
    Column(Modifier.fillMaxWidth().weight(1f).border(1.5.dp,mint.copy(alpha=0.65f),RoundedCornerShape(12.dp)).background(Color.Black,RoundedCornerShape(12.dp)),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally){
-    if(clip!=null)AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true}},modifier=Modifier.fillMaxSize()) else Text("Import video clips",color=muted)
+    if(clip!=null)AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true}},modifier=Modifier.fillMaxSize().graphicsLayer{
+     val current=clip
+     val animated=current?.animationKeyframes?.takeIf{it.isNotEmpty()}?.let{animationAt(it,previewPosition,current)}
+     if(animated!=null&&current!=null){
+      val baseZoom=current.cropZoom.coerceAtLeast(.01f)
+      scaleX=animated.zoom/baseZoom
+      scaleY=animated.zoom/baseZoom
+      rotationZ=animated.rotation-current.rotation.toFloat()
+     }else{scaleX=1f;scaleY=1f;rotationZ=0f}
+    }) else Text("Import video clips",color=muted)
    }
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
     OutlinedButton(onClick={addVideos.launch(arrayOf("video/*"))},modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=6.dp,vertical=8.dp)){Icon(Icons.Default.VideoLibrary,null);Spacer(Modifier.width(4.dp));Text("Import",fontSize=12.sp,maxLines=1)}
@@ -258,6 +269,7 @@ private fun EditorScreen(){
             FilterChip(selected=selectedAnimationKeyframe==idx,onClick={
              selectedAnimationKeyframe=idx
              if(player.isPlaying)player.pause()
+             previewPosition=k.timeMs
              player.seekTo(k.timeMs)
              applyPreviewEffects(clip,k)
              status="Selected animation keyframe at ${tc(k.timeMs)}."
@@ -283,7 +295,7 @@ private fun EditorScreen(){
              Text("CONTRAST  ${String.format(Locale.US,"%.2f",anim.contrast)}",color=Color.White,fontSize=11.sp)
              Slider(value=anim.contrast,onValueChange={v->val changed=clip.animationKeyframes.toMutableList();changed[selectedAnimationKeyframe]=anim.copy(contrast=v);update(clip.copy(animationKeyframes=changed))},onValueChangeFinished={clips.getOrNull(selected)?.let{applyPreviewEffects(it,clips[selected].animationKeyframes.getOrNull(selectedAnimationKeyframe))}},valueRange=-1f..1f)
              Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-              OutlinedButton(onClick={if(player.isPlaying)player.pause();player.seekTo(anim.timeMs);applyPreviewEffects(clip,anim);status="Previewing KF ${selectedAnimationKeyframe+1}."},modifier=Modifier.weight(1f)){Icon(Icons.Default.Visibility,null);Text("Preview frame")}
+              OutlinedButton(onClick={if(player.isPlaying)player.pause();previewPosition=anim.timeMs;player.seekTo(anim.timeMs);applyPreviewEffects(clip,anim);status="Previewing KF ${selectedAnimationKeyframe+1}."},modifier=Modifier.weight(1f)){Icon(Icons.Default.Visibility,null);Text("Preview frame")}
               OutlinedButton(onClick={val changed=clip.animationKeyframes.toMutableList();changed.removeAt(selectedAnimationKeyframe);update(clip.copy(animationKeyframes=changed));selectedAnimationKeyframe=-1;status="Animation keyframe deleted."},modifier=Modifier.weight(1f)){Icon(Icons.Default.Delete,null);Text("Delete")}
              }
             }
@@ -302,7 +314,7 @@ private fun EditorScreen(){
          },modifier=Modifier.fillMaxWidth().heightIn(min=44.dp),contentPadding=PaddingValues(horizontal=10.dp,vertical=7.dp)){Icon(Icons.Default.Add,null);Text("Add speed keyframe")}
          if(clip.speedKeyframes.isNotEmpty()){
           Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-           clip.speedKeyframes.forEachIndexed{idx,k->FilterChip(selected=selectedKeyframe==idx,onClick={selectedKeyframe=idx;if(player.isPlaying)player.pause();player.seekTo(k.timeMs)},label={Text("KF ${idx+1} • ${tc(k.timeMs)} • ${String.format(Locale.US,"%.2f",k.speed)}x")})}
+           clip.speedKeyframes.forEachIndexed{idx,k->FilterChip(selected=selectedKeyframe==idx,onClick={selectedKeyframe=idx;if(player.isPlaying)player.pause();previewPosition=k.timeMs;player.seekTo(k.timeMs)},label={Text("KF ${idx+1} • ${tc(k.timeMs)} • ${String.format(Locale.US,"%.2f",k.speed)}x")})}
           }
           val kf=clip.speedKeyframes.getOrNull(selectedKeyframe)
           if(kf!=null){
