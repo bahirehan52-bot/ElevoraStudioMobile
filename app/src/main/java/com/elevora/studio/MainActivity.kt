@@ -140,7 +140,7 @@ private fun EditorScreen(){
      lastSignature=signature
     }
    }
-   delay(100)
+   delay(50)
   }
  }
  LaunchedEffect(selected,clip?.speedKeyframes,timelinePreview){
@@ -330,7 +330,7 @@ private fun EditorScreen(){
         val out=File(context.cacheDir,"elevora_${System.currentTimeMillis()}.mp4")
         val items=clips.flatMap{c->
          val clipLength=(c.end-c.start).coerceAtLeast(1L)
-         val segmentMs=if(c.animationKeyframes.isEmpty())clipLength else 250L
+         val segmentMs=if(c.animationKeyframes.isEmpty())clipLength else 100L
          val count=((clipLength+segmentMs-1L)/segmentMs).toInt().coerceAtLeast(1)
          (0 until count).map{segmentIndex->
           val offset=segmentIndex*segmentMs
