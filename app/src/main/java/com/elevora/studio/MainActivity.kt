@@ -117,8 +117,8 @@ private fun EditorScreen(){
  DisposableEffect(player){
   val listener=object:Player.Listener{
    override fun onMediaItemTransition(mediaItem:MediaItem?,reason:Int){
-    val clipId=mediaItem?.mediaId?.toIntOrNull()
-    val index=clipId?.takeIf{it in clips.indices}?:-1
+    val clipId=mediaItem?.mediaId
+    val index=clipId?.let{id->clips.indexOfFirst{timelineClipId(it)==id}}?:-1
     if(index>=0){selected=index;val c=clips[index];player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));player.setPlaybackSpeed(c.speed)}
    }
    override fun onPlaybackStateChanged(playbackState:Int){if(playbackState==Player.STATE_ENDED)timelinePreview=false}
@@ -126,7 +126,7 @@ private fun EditorScreen(){
   player.addListener(listener)
   onDispose{player.removeListener(listener)}
  }
- LaunchedEffect(selected,clips.size,clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
+ LaunchedEffect(clipKey(clips,selected),timelinePreview){if(!timelinePreview){val c=clips.getOrNull(selected);if(c!=null){player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));val item=MediaItem.Builder().setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build();player.setMediaItem(item);player.prepare();player.setPlaybackSpeed(c.speed)}else{player.setVideoEffects(emptyList());player.stop()}}}
  val clip=clips.getOrNull(selected)
  LaunchedEffect(player,selected,timelinePreview){while(true){if(player.isPlaying)previewPosition=player.currentPosition;delay(33)}}
  // Do not rebuild the video effect graph on a timer. Media3 may recreate the renderer each time,
@@ -152,6 +152,27 @@ private fun EditorScreen(){
   player.setVideoEffects(clipEffects(c,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale,sample?.copy(zoom=c.cropZoom,rotation=c.rotation.toFloat())))
   if(player.currentMediaItem!=null)player.seekTo(position)
  }
+ fun moveClip(from:Int,to:Int){
+  if(from !in clips.indices||to !in clips.indices||from==to)return
+  val selectedId=clips.getOrNull(selected)?.let{timelineClipId(it)}
+  val activeId=player.currentMediaItem?.mediaId
+  val activePosition=player.currentPosition.coerceAtLeast(0L)
+  val wasPlaying=player.isPlaying||player.playWhenReady
+  val moved=clips.removeAt(from);clips.add(to,moved)
+  selected=clips.indexOfFirst{timelineClipId(it)==selectedId}.takeIf{it>=0}?:0
+  if(timelinePreview&&clips.isNotEmpty()){
+   val items=clips.map{c->MediaItem.Builder().setMediaId(timelineClipId(c)).setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
+   val resumeIndex=items.indexOfFirst{it.mediaId==activeId}.takeIf{it>=0}?:selected.coerceIn(0,items.lastIndex)
+   val resumeClip=clips[resumeIndex]
+   val resumePosition=activePosition.coerceIn(0L,(resumeClip.end-resumeClip.start).coerceAtLeast(0L))
+   player.setMediaItems(items,resumeIndex,resumePosition)
+   player.setVideoEffects(clipEffects(resumeClip,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale))
+   player.setPlaybackSpeed(speedAt(resumeClip.speedKeyframes,resumePosition,resumeClip.speed))
+   player.prepare()
+   if(wasPlaying)player.play()
+  }
+  status="Clip moved to position ${to+1}."
+ }
  fun removeClip(index:Int){if(index !in clips.indices)return;clips.removeAt(index);selected=when{clips.isEmpty()->0;index<selected->selected-1;index==selected->selected.coerceAtMost(clips.lastIndex);else->selected}}
  MaterialTheme(colorScheme=darkColorScheme(primary=mint,background=bg,surface=panel)){
   Column(Modifier.fillMaxSize().background(bg).statusBarsPadding().navigationBarsPadding().padding(horizontal=10.dp, vertical=6.dp)){
@@ -176,7 +197,7 @@ private fun EditorScreen(){
     OutlinedButton(onClick={addVideos.launch(arrayOf("video/*"))},modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=6.dp,vertical=8.dp)){Icon(Icons.Default.VideoLibrary,null);Spacer(Modifier.width(4.dp));Text("Import",fontSize=12.sp,maxLines=1)}
     OutlinedButton(enabled=clip!=null,onClick={if(player.isPlaying)player.pause()else player.play()},modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=6.dp,vertical=8.dp)){Icon(if(player.isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow,null);Spacer(Modifier.width(4.dp));Text("Play",fontSize=12.sp,maxLines=1)}
     OutlinedButton(enabled=clips.isNotEmpty(),onClick={
-     val items=clips.mapIndexed{index,c->MediaItem.Builder().setMediaId(index.toString()).setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
+     val items=clips.map{c->MediaItem.Builder().setMediaId(timelineClipId(c)).setUri(Uri.parse(c.uri)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()).build()}
      timelinePreview=true;player.setMediaItems(items,true);player.prepare()
      clips.firstOrNull()?.let{player.setVideoEffects(clipEffects(it,appliedOverlayText,appliedTextX,appliedTextY,appliedTextScale));player.setPlaybackSpeed(it.speed)}
      player.play();status="Playing full timeline • ${clips.size} clips"
@@ -205,15 +226,15 @@ private fun EditorScreen(){
          Surface(color=if(index==selected)Color(0xFF24534F)else Color(0xFF243344),shape=RoundedCornerShape(9.dp),modifier=Modifier.width(132.dp).pointerInput(index,clips.size){detectDragGesturesAfterLongPress(onDragStart={dragDelta=0f},onDragEnd={
           val shift=(dragDelta/140f).roundToInt()
           val target=(index+shift).coerceIn(0,clips.lastIndex)
-          if(target!=index&&index in clips.indices){val oldSelected=selected;val moved=clips.removeAt(index);clips.add(target,moved);selected=when{oldSelected==index->target;index<target&&oldSelected in (index+1)..target->oldSelected-1;target<index&&oldSelected in target until index->oldSelected+1;else->oldSelected};status="Clip moved to position ${target+1}."}
+          if(target!=index)moveClip(index,target)
          },onDragCancel={dragDelta=0f},onDrag={change,amount->dragDelta+=amount.x;change.consume()})}.border(1.dp,if(index==selected)mint else Color(0xFF405266),RoundedCornerShape(9.dp)),onClick={timelinePreview=false;selected=index}){
           Column(Modifier.padding(9.dp)){
            Text("CLIP ${index+1}",color=mint,fontSize=10.sp,fontWeight=FontWeight.Bold)
            Text(c.name,color=Color.White,maxLines=1,fontSize=11.sp)
            Text("${tc(c.start)}–${tc(c.end)}",color=muted,fontSize=10.sp)
            Row(horizontalArrangement=Arrangement.SpaceBetween,modifier=Modifier.fillMaxWidth()){
-            IconButton(onClick={if(index>0){val t=clips[index];clips[index]=clips[index-1];clips[index-1]=t;selected=index-1}}){Icon(Icons.Default.KeyboardArrowLeft,"Move left",tint=mint)}
-            IconButton(onClick={if(index<clips.lastIndex){val t=clips[index];clips[index]=clips[index+1];clips[index+1]=t;selected=index+1}}){Icon(Icons.Default.KeyboardArrowRight,"Move right",tint=mint)}
+            IconButton(onClick={if(index>0)moveClip(index,index-1)}){Icon(Icons.Default.KeyboardArrowLeft,"Move left",tint=mint)}
+            IconButton(onClick={if(index<clips.lastIndex)moveClip(index,index+1)}){Icon(Icons.Default.KeyboardArrowRight,"Move right",tint=mint)}
             IconButton(onClick={removeClip(index)}){Icon(Icons.Default.Delete,"Delete",tint=Color.Red)}
            }
           }
@@ -404,6 +425,7 @@ private fun EditorScreen(){
  }
 }
 private fun clipKey(clips:List<EditClip>,index:Int):String=clips.getOrNull(index)?.uri?:"empty"
+private fun timelineClipId(c:EditClip):String="${c.uri}#${c.start}:${c.end}"
 
 @OptIn(UnstableApi::class)
 private fun clipEffects(c: EditClip, text: String, textX: Float = 0f, textY: Float = 0f, textScale: Float = 1f, animation:AnimationKeyframe?=null): List<Effect> {
